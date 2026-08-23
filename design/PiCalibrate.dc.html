@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+    a { color: #38D39B; } a:hover { color: #6FE3B8; }
+  </style>
+</helmet>
+<div style="width: 480px; height: 320px; background: #0A0C0D; color: #E8EDEF; display: flex; flex-direction: column; overflow: hidden; padding: 24px 26px;">
+
+  <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #4A565B; margin-bottom: 14px;">LEARNING YOUR BASELINE</div>
+
+  <div style="font-size: 27px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 6px;">Just look ahead<br>and drive normally.</div>
+  <div style="font-size: 14px; color: #7C8A91; margin-bottom: 20px;">Nothing to do. This happens once per driver.</div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+    <div style="height: 7px; border-radius: 4px; background: #1D2225; overflow: hidden;">
+      <div style="width: 64%; height: 100%; background: #38D39B;"></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #4A565B;">
+      <div>6 of 10 min</div>
+      <div style="color: #38D39B;">64%</div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: auto;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 600; color: #38D39B;">0.276</div>
+      <div style="font-size: 10px; letter-spacing: 0.08em; color: #4A565B;">YOUR EAR</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 600; color: #38D39B;">14.2</div>
+      <div style="font-size: 10px; letter-spacing: 0.08em; color: #4A565B;">BLINKS / MIN</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 17px; font-weight: 600; color: #38D39B;">&minus;4&deg;</div>
+      <div style="font-size: 10px; letter-spacing: 0.08em; color: #4A565B;">NEUTRAL PITCH</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":480,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

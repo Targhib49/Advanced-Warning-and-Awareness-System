@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+    a { color: #38D39B; } a:hover { color: #6FE3B8; }
+  </style>
+</helmet>
+<div style="width: 480px; height: 320px; background: #0A0C0D; color: #E8EDEF; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="height: 6px; background: #F27A3E; flex-shrink: 0;"></div>
+
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 26px 0 26px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 7px; height: 7px; border-radius: 50%; background: #38D39B;"></div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #4A565B;">CAM ACTIVE</div>
+    </div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #F27A3E;">NO REPLY 8s</div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 0 26px;">
+
+    <div style="display: flex; gap: 8px;">
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #2A3135;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #2A3135;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #2A3135;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #F27A3E;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #1D2225;"></div>
+    </div>
+
+    <div style="font-size: 46px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; color: #F27A3E;">UNSAFE</div>
+
+    <div style="display: flex; align-items: center; gap: 13px; background: #1A1512; border-left: 3px solid #F27A3E; padding: 12px 15px;">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#F27A3E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+        <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+        <line x1="6" y1="1" x2="6" y2="4"/>
+        <line x1="10" y1="1" x2="10" y2="4"/>
+        <line x1="14" y1="1" x2="14" y2="4"/>
+      </svg>
+      <div style="display: flex; align-items: baseline; gap: 8px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 27px; font-weight: 600; color: #E8EDEF;">4.2<span style="font-size: 14px; color: #7C8A91; margin-left: 3px;">km</span></div>
+        <div style="font-size: 14px; color: #7C8A91;">to rest stop</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="border-top: 1px solid #1D2225; padding: 13px 26px 15px 26px; display: flex; justify-content: space-between; align-items: baseline; font-family: 'IBM Plex Mono', monospace;">
+    <div style="font-size: 19px; font-weight: 500; color: #E8EDEF;">61<span style="font-size: 12px; color: #4A565B; margin-left: 3px;">km/h</span></div>
+    <div style="font-size: 12px; letter-spacing: 0.12em; color: #4A565B;">MOVING</div>
+    <div style="font-size: 19px; font-weight: 500; color: #7C8A91;">2:51<span style="font-size: 12px; color: #4A565B; margin-left: 3px;">trip</span></div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":480,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

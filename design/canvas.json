@@ -1,0 +1,58 @@
+{
+  "pages": [
+    { "id": "phase-1", "name": "Phase 1 · Ships in 4 weeks" },
+    { "id": "phase-2", "name": "Phase 2 · Research contribution" },
+    { "id": "phase-3", "name": "Phase 3 · Product" },
+    { "id": "phase-4", "name": "Phase 4 · Company" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html",        "page": "phase-1", "x": 0,    "y": 0,    "w": 480,  "h": 320, "title": "Pi · L0 monitoring" },
+    { "file": "PiLevel1.dc.html",    "page": "phase-1", "x": 540,  "y": 0,    "w": 480,  "h": 320, "title": "Pi · L1 check-in" },
+    { "file": "PiLevel2.dc.html",    "page": "phase-1", "x": 1080, "y": 0,    "w": 480,  "h": 320, "title": "Pi · L2 engage" },
+    { "file": "PiLevel3.dc.html",    "page": "phase-1", "x": 1620, "y": 0,    "w": 480,  "h": 320, "title": "Pi · L3 insist" },
+    { "file": "PiLevel4.dc.html",    "page": "phase-1", "x": 2160, "y": 0,    "w": 480,  "h": 320, "title": "Pi · L4 critical" },
+
+    { "file": "PiBoot.dc.html",      "page": "phase-1", "x": 0,    "y": 460,  "w": 480,  "h": 320, "title": "Pi · boot self-check" },
+    { "file": "PiDegraded.dc.html",  "page": "phase-1", "x": 540,  "y": 460,  "w": 480,  "h": 320, "title": "Pi · camera blocked" },
+    { "file": "PiTrip.dc.html",      "page": "phase-1", "x": 1080, "y": 460,  "w": 480,  "h": 320, "title": "Pi · trip summary" },
+
+    { "file": "DemoView.dc.html",    "page": "phase-1", "x": 0,    "y": 920,  "w": 1280, "h": 800, "title": "Competition demo view" },
+    { "file": "Scope.dc.html",       "page": "phase-1", "x": 1380, "y": 920,  "w": 700,  "h": 800, "title": "Scope contract" },
+
+    { "file": "PiCalibrate.dc.html", "page": "phase-2", "x": 0,    "y": 0,    "w": 480,  "h": 320, "title": "Pi · baseline calibration" },
+    { "file": "PiKSS.dc.html",       "page": "phase-2", "x": 540,  "y": 0,    "w": 480,  "h": 320, "title": "Pi · KSS self-report" },
+    { "file": "DemoP2.dc.html",      "page": "phase-2", "x": 1080, "y": 0,    "w": 680,  "h": 800, "title": "Demo view · added panels" },
+
+    { "file": "FleetDash.dc.html",   "page": "phase-3", "x": 0,    "y": 0,    "w": 1440, "h": 900, "title": "Fleet · tonight" },
+    { "file": "PiRisk.dc.html",      "page": "phase-3", "x": 1540, "y": 0,    "w": 480,  "h": 320, "title": "Pi · risk forecast" },
+
+    { "file": "FleetForecast.dc.html", "page": "phase-4", "x": 0,  "y": 0,    "w": 1440, "h": 820, "title": "Fleet · tomorrow's roster" }
+  ],
+  "annotations": [
+    {
+      "id": "ladder-thesis",
+      "page": "phase-1",
+      "x": 0,
+      "y": -230,
+      "w": 700,
+      "text": "The escalation ladder, left to right.\n\nDesign rule: while the vehicle is MOVING the screen carries almost nothing to read. The lit segment and the colour do the work at a glance; the words are audio. Detail only appears once the vehicle is stopped.\n\nLevel 4 deliberately breaks that calm — it is the only screen that floods."
+    },
+    {
+      "id": "degraded-note",
+      "page": "phase-1",
+      "x": 1620,
+      "y": 460,
+      "w": 420,
+      "text": "Boot shows OBD-II missing on purpose. Most Indonesian vehicles will not have it, and the system has to look untroubled by that.\n\nTrip summary is the only dense screen, and only because the vehicle is parked."
+    },
+    {
+      "id": "fleet-note",
+      "page": "phase-3",
+      "x": 1540,
+      "y": 400,
+      "w": 460,
+      "text": "The bottom-right panel — minutes of alertness bought per intervention type — is the one chart no competitor can draw, because nobody else measures whether their warning worked.\n\nThis dashboard is the recurring revenue. The box is sold once."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "phase-1" }
+}

@@ -1,0 +1,183 @@
+Copy-paste into WhatsApp. Send as 5 separate messages — the section breaks
+(=====) are where to split. WhatsApp formatting: *bold* _italic_ ```mono```
+=============================================================================
+
+
+*AWAS — what we actually use (1/5)*
+_Layer 1: driver monitoring_
+
+*Face landmarks*
+MediaPipe Face Landmarker (Tasks API) — 478 points per face, runs on CPU.
+This IS a neural network, so we are already using deep learning even in the
+"geometric" part. Important to say correctly.
+Paper: Kartynnik et al. (2019), "Real-time Facial Surface Geometry from
+Monocular Video on Mobile GPUs", arXiv:1907.06724
+
+*Eye openness*
+EAR (Eye Aspect Ratio) — a ratio between 6 landmarks per eye.
+Paper: Soukupová & Čech (2016), "Real-Time Eye Blink Detection using Facial
+Landmarks", CVWW
+Note: their best result used a classifier over a window of EAR values, NOT a
+bare threshold. Most tutorials copy the weaker version.
+
+*Head pose*
+solvePnP (OpenCV) against a generic 3D face model → pitch/yaw/roll.
+Used to reject frames where head rotation would corrupt EAR.
+
+*Our own addition — per-driver calibration*
+We do NOT threshold EAR directly. We learn each driver's own open and closed
+reference during known-alert periods, then score every frame on their personal
+scale. No ML needed, just robust statistics.
+Reason: baseline eye shape varies 2–3x between people, so one fixed threshold
+is too sensitive for one driver and too deaf for the next.
+
+=============================================================================
+
+
+*AWAS — what we actually use (2/5)*
+_The drowsiness measure_
+
+*PERCLOS*
+The fraction of a 60-second window the eyes are more than 80% closed (P80).
+This is the validated standard, not something we invented.
+Paper: Dinges & Grace (1998), "PERCLOS: A Valid Psychophysiological Measure of
+Alertness as Assessed by Psychomotor Vigilance", report FHWA-MCRT-98-006,
+US Department of Transportation
+Originally scored by humans watching video — which is why it is a sound
+measure independently of any automatic detector.
+
+Also from Wierwille and colleagues' driver-monitoring work at Virginia Tech in
+the early 1990s, which is where PERCLOS originates.
+
+*Blinks vs microsleeps*
+We separate them by duration. A closure of 500 ms or more is a microsleep, not
+a blink. 2 seconds is critical.
+
+*Hysteresis*
+A level must hold for 3 consecutive updates before escalating, 10 before
+relaxing. Without this the level chatters across a threshold and the driver is
+alerted, un-alerted and re-alerted within seconds.
+
+*Ground truth*
+KSS (Karolinska Sleepiness Scale), 1–9, asked at trip start and end.
+Paper: Åkerstedt & Gillberg (1990), "Subjective and objective sleepiness in the
+active individual", International Journal of Neuroscience 52(1–2), 29–37
+
+=============================================================================
+
+
+*AWAS — what we actually use (3/5)*
+_Machine learning_
+
+*Model*
+EyeStateNet — a small CNN, *23,538 parameters*, PyTorch.
+Input: 32x32 grayscale eye crop. Output: probability the eye is closed.
+Replaces the EAR threshold, which breaks under head rotation and varies by
+person.
+
+*Dataset*
+MRL Eye Dataset — 84,898 infrared eye images, 37 subjects, 3 cameras.
+Source: mrl.cs.vsb.cz/eyedataset (Media Research Lab, VSB Ostrava)
+Free, no application needed. Labels are encoded in the filename: subject,
+gender, glasses, eye state, reflections, lighting, sensor.
+
+*The most important methodological point*
+We split the data *by subject*, never by image. MRL has 37 people with hundreds
+of near-identical photos each. A random split puts the same eyes in training
+and testing and reports an accuracy that means nothing.
+Concept to look up: *data leakage*.
+This is the difference between a number a judge can attack and one they cannot.
+
+*Baselines*
+We report a majority-class baseline and a logistic regression on raw pixels
+next to the CNN. If the CNN does not beat them, we ship the simpler model.
+Deep learning that does not beat a boosted tree is a liability on an embedded
+device, not an achievement.
+
+=============================================================================
+
+
+*AWAS — what we actually use (4/5)*
+_System, response and deployment_
+
+*Decision logic*
+A finite state machine — parked / moving / stopped at light / traffic jam /
+shutdown. It is *pure*: no camera, no clock, no model inside it. That is why we
+can test it exhaustively.
+
+*Response*
+Every line the system can say is written in advance and rendered to audio
+before it runs. Nothing is generated while driving.
+Measured: *25 ms* from decision to audible, against a 300 ms budget.
+Rendering now uses macOS `say`; on the Pi it will use Piper (offline TTS).
+Playback: sounddevice, pre-warmed stream, clips already in memory.
+
+*Export for the Pi*
+ONNX + ONNX Runtime, with int8 static quantization.
+Honest finding: at 23.5k parameters the int8 model is actually *larger* than
+fp32 (49 KB vs 25 KB) because the quantize/dequantize nodes cost more than the
+weights save. It is ~40% faster but we will probably ship fp32.
+
+*Logging*
+JSONL, one record per event. Derived numbers only — no video, no images, no
+landmark coordinates. Nothing in the log can reconstruct a picture of a driver.
+
+*Target hardware*
+Raspberry Pi 5 (8GB) with active cooling. Note the original BOM said Pi 4B and
+had no IR illuminator — a NoIR camera with nothing emitting infrared cannot see
+at night, which is half the use case.
+
+=============================================================================
+
+
+*AWAS — what we actually use (5/5)*
+_Versions and reading list_
+
+*Environment*
+```
+Python 3.11.8
+mediapipe==0.10.35
+opencv-python==4.11.0.86
+numpy==1.26.4
+torch==2.13.0
+scikit-learn==1.9.0
+onnx==1.22.0
+onnxruntime==1.29.0
+onnxscript==0.7.1
+sounddevice==0.5.6
+pytest==9.1.1
+```
+Two pins matter: mediapipe must be *below 1.0* (the 1.x macOS builds force the
+Metal GPU delegate and crash on CPU), and numpy must be *below 2.0* (several
+wheels are still built against 1.x).
+
+*Papers to cite — all free, search by title*
+
+1. Soukupová & Čech (2016) — Real-Time Eye Blink Detection using Facial
+   Landmarks. CVWW. → where EAR comes from
+
+2. Dinges & Grace (1998) — PERCLOS: A Valid Psychophysiological Measure of
+   Alertness. FHWA-MCRT-98-006. → where PERCLOS comes from
+
+3. Kartynnik et al. (2019) — Real-time Facial Surface Geometry from Monocular
+   Video on Mobile GPUs. arXiv:1907.06724 → the MediaPipe mesh model
+
+4. Åkerstedt & Gillberg (1990) — Subjective and objective sleepiness in the
+   active individual. Int J Neuroscience 52(1–2). → the KSS scale
+
+5. Kazemi & Sullivan (2014) — One Millisecond Face Alignment with an Ensemble
+   of Regression Trees. CVPR. → the dlib approach we did NOT use; good for
+   related work
+
+6. Keshav (2007) — How to Read a Paper. → three pages, read this FIRST
+
+*Datasets*
+- MRL Eye Dataset — mrl.cs.vsb.cz/eyedataset (using now, no application)
+- NTHU-DDD, UTA-RLDD, DROZY — need applications, start them early, they take
+  weeks
+
+*Still to verify before citing*
+- SDLP (standard deviation of lane position) as a fatigue measure — the
+  literature is solid but we have not picked a specific citation yet
+- EU General Safety Regulation drowsiness mandate — check current dates before
+  putting them in a slide

@@ -1,0 +1,202 @@
+# AWAS — .gitignore
+#
+# Three things must never reach a public repository from this project:
+#   1. Anything derived from a real person's face or alertness (plan §8, I5)
+#   2. Datasets and model weights, which are large and fetched by script
+#   3. Credentials, especially the Kaggle token used for dataset access
+#
+# Everything else here is ordinary hygiene. When in doubt about a new file,
+# ask whether it can be regenerated from what IS committed — if so, ignore it.
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# DRIVER DATA — privacy critical
+# ─────────────────────────────────────────────────────────────────────────
+# Driver profiles hold biometric-derived measurements (personal eye baselines).
+# Session logs hold a named person's alertness minute by minute. Neither may be
+# committed, shared, or published. They stay on the device that made them and
+# the driver can delete them.
+data/profiles/
+data/sessions/
+data/recordings/
+*.session.jsonl
+
+# Research participant material — consent forms, KSS responses, anything that
+# could identify a study subject.
+data/participants/
+data/consent/
+study/raw/
+
+# Any captured footage. There is no legitimate reason for a frame of a real
+# driver's face to be in version control.
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.h264
+captures/
+clips/
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# DATASETS AND MODELS — large, and fetched by script
+# ─────────────────────────────────────────────────────────────────────────
+# MRL, NTHU-DDD, UTA-RLDD, DROZY and friends. Hundreds of MB to tens of GB.
+# Written as data/* rather than data/ so the negation below actually works:
+# git cannot re-include a file whose parent directory is itself excluded.
+data/*
+!data/.gitkeep
+
+# Face landmark models etc. — scripts/fetch_models.sh retrieves these with a
+# pinned checksum, which is better than a binary blob in git history.
+models/
+*.task
+*.tflite
+
+# Training outputs: checkpoints, exports, metrics, calibration caches.
+artifacts/
+runs/
+checkpoints/
+wandb/
+mlruns/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.pkl
+*.joblib
+*.npy
+*.npz
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# GENERATED ASSETS — rebuild, don't commit
+# ─────────────────────────────────────────────────────────────────────────
+# Phrase audio. The TEXT in awas/companion/phrasebank.py is the source of
+# truth; scripts/render_phrases.py regenerates the WAVs from it.
+assets/phrases/*.wav
+assets/phrases/manifest.json
+
+# The published design canvas bakes a ~2 MB editor into one HTML file. The
+# real source is the .dc.html artboards and canvas.json beside it, which ARE
+# tracked. Delete this line if you would rather version the built page.
+design/*-mockups.html
+
+# macOS app wrapper built by scripts/make_app.sh for camera permissions.
+*.app/
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# SECRETS
+# ─────────────────────────────────────────────────────────────────────────
+# Kaggle API token — grants full access to the account that owns it.
+kaggle.json
+.kaggle/
+
+.env
+.env.*
+!.env.example
+secrets.yaml
+credentials.json
+*.pem
+*.key
+!**/keyboard.key
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# PYTHON
+# ─────────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+venv/
+.venv/
+env/
+ENV/
+pip-wheel-metadata/
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# EDITORS
+# ─────────────────────────────────────────────────────────────────────────
+.vscode/
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.iml
+*.sublime-workspace
+*.swp
+*.swo
+*~
+.\#*
+\#*\#
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# OPERATING SYSTEMS
+# ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+Icon?
+
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+*~
+.fuse_hidden*
+.nfs*
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# RASPBERRY PI / DEPLOYMENT
+# ─────────────────────────────────────────────────────────────────────────
+deploy/*.img
+deploy/*.img.xz
+*.deb
+systemd/*.local.service
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# MISCELLANEOUS SCRATCH
+# ─────────────────────────────────────────────────────────────────────────
+# Blobs some native libraries drop in the working directory unasked.
+*.data
+!**/testdata/**/*.data
+
+*.log
+!docs/**/*.log
+tmp/
+scratch/
+.cache/

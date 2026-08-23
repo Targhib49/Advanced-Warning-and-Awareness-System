@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+    a { color: #38D39B; } a:hover { color: #6FE3B8; }
+  </style>
+</helmet>
+<div style="width: 480px; height: 320px; background: #0A0C0D; color: #E8EDEF; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="height: 6px; background: #E0A93C; flex-shrink: 0;"></div>
+
+  <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 26px 0 26px;">
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="width: 7px; height: 7px; border-radius: 50%; background: #38D39B;"></div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #4A565B;">CAM ACTIVE</div>
+    </div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #7C8A91;">01:52</div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px; padding: 0 26px;">
+
+    <div style="display: flex; gap: 8px;">
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #2A3135;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #E0A93C;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #1D2225;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #1D2225;"></div>
+      <div style="width: 76px; height: 10px; border-radius: 2px; background: #1D2225;"></div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 9px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: #4A565B;">NEXT 60 MINUTES</div>
+      <svg viewBox="0 0 428 62" width="100%" height="62" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M0 50 C 60 48, 110 44, 160 36 C 220 26, 270 14, 330 8 L 428 4" stroke="#F27A3E" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="300" y1="0" x2="300" y2="62" stroke="#F04438" stroke-width="1.5" stroke-dasharray="3 4"/>
+        <line x1="210" y1="0" x2="210" y2="62" stroke="#38D39B" stroke-width="1.5" stroke-dasharray="3 4"/>
+      </svg>
+      <div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 11px;">
+        <div style="color: #38D39B;">02:15 rest stop</div>
+        <div style="color: #F04438;">02:40 likely unsafe</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="background: #1A1512; border-top: 1px solid #2A2018; padding: 13px 26px; display: flex; align-items: center; gap: 12px;">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#E0A93C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;" aria-hidden="true">
+      <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>
+    </svg>
+    <div style="font-size: 14px; line-height: 1.4; color: #E8EDEF;">Stop at <span style="font-weight: 600;">02:15</span>, not later. You have 23 minutes.</div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":480,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

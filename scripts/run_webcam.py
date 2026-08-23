@@ -1,0 +1,206 @@
+"""The Phase 1 demo: webcam -> Layer 1 -> state machine -> actions.
+
+    python -m scripts.run_webcam
+    python -m scripts.run_webcam --driver budi --video clip.mp4
+
+Keys:  q quit   [ / ] speed down/up   i toggle ignition   c clear profile
+
+The overlay is the competition demo view. It shows the gating decisions, not
+just the outcome — "L1 suppressed, workload 0.82" is what distinguishes this
+from a beeper, and a judge cannot see it any other way.
+"""
+
+from __future__ import annotations
+
+import argparse
+from collections import deque
+from pathlib import Path
+
+from awas.companion.dialogue import DialogueManager
+from awas.core.machine import StateMachine
+from awas.core.states import DrivingState
+from awas.driver.ear import MEDIAPIPE_LEFT_EYE, MEDIAPIPE_RIGHT_EYE
+from awas.runtime.executor import ActionExecutor
+from awas.runtime.session_log import SessionLog
+from awas.sources.webcam import WebcamSource, default_model_path
+from awas.speech.audio import NullAudioOut, StreamAudioOut
+
+BG = (13, 12, 10)
+DIM = (91, 138, 124)
+TEXT = (239, 237, 232)
+LEVEL_COLORS = [(155, 211, 56), (60, 169, 224), (62, 178, 242), (62, 122, 242), (56, 68, 240)]
+LEVEL_NAMES = ["AWAKE", "TIRED", "DROWSY", "UNSAFE", "PULL OVER"]
+
+
+def draw(cv2, frame, state, sm, telemetry, log, fps):
+    h, w = frame.shape[:2]
+    lvl = state.drowsiness_level
+    color = LEVEL_COLORS[min(lvl, 4)]
+
+    if state.face_present and state.landmarks_drawn:
+        pass  # landmarks are drawn by the caller, which owns the point list
+
+    panel_h = 150
+    cv2.rectangle(frame, (0, h - panel_h), (w, h), BG, -1)
+    cv2.rectangle(frame, (0, 0), (w, 6), color, -1)
+
+    def put(text, x, y, scale=0.5, col=TEXT, weight=1):
+        cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, col, weight, cv2.LINE_AA)
+
+    y0 = h - panel_h + 26
+    put(LEVEL_NAMES[min(lvl, 4)], 14, y0, 0.8, color, 2)
+    put(f"conf {state.confidence:.2f}", 200, y0, 0.5, DIM)
+
+    seg_w = (w - 28) // 5
+    for i in range(5):
+        c = LEVEL_COLORS[i] if i <= lvl else (34, 40, 43)
+        x = 14 + i * seg_w
+        cv2.rectangle(frame, (x, y0 + 12), (x + seg_w - 6, y0 + 20), c, -1)
+
+    y1 = y0 + 46
+    put(f"EAR {state.eye_aspect_ratio:.3f}", 14, y1, 0.45, DIM)
+    put(f"open {state.openness:.2f}", 120, y1, 0.45, DIM)
+    put(f"PERCLOS {state.perclos:.1%}", 220, y1, 0.45, DIM)
+    put(f"micro {state.microsleep_count}", 360, y1, 0.45, DIM)
+    put(f"blink {state.blink_duration_mean_ms:.0f}ms", 450, y1, 0.45, DIM)
+
+    y2 = y1 + 22
+    put(f"{sm.state.value}", 14, y2, 0.45, DIM)
+    put(f"{telemetry.speed_kmh:.0f} km/h", 150, y2, 0.45, DIM)
+    put(f"{fps:.1f} fps", 240, y2, 0.45, DIM)
+    put(f"pitch {state.head_pitch_deg:+.0f} yaw {state.head_yaw_deg:+.0f}", 330, y2, 0.45, DIM)
+
+    if state.calibrating:
+        pct = state.calibration_progress
+        put(f"calibrating {pct:.0%}", 14, y2 + 22, 0.45, (60, 169, 224))
+        cv2.rectangle(frame, (160, y2 + 14), (160 + int(200 * pct), y2 + 20), (60, 169, 224), -1)
+    else:
+        put(f"personal scale  {state.reason}", 14, y2 + 22, 0.45, (155, 211, 56))
+
+    for i, line in enumerate(list(log)[-3:]):
+        put(line, 14, y2 + 44 + i * 16, 0.4, DIM)
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="AWAS Phase 1 webcam demo.")
+    ap.add_argument("--driver", default="default")
+    ap.add_argument("--video", default=None, help="run on a file instead of the camera")
+    ap.add_argument("--camera", type=int, default=0)
+    ap.add_argument("--profiles", default="data/profiles")
+    ap.add_argument("--model", default=None)
+    ap.add_argument("--phrases", default="assets/phrases")
+    ap.add_argument("--sessions", default="data/sessions")
+    ap.add_argument("--mute", action="store_true", help="decide and log, but stay silent")
+    ap.add_argument("--no-log", action="store_true")
+    args = ap.parse_args()
+
+    import cv2
+
+    model = Path(args.model) if args.model else default_model_path()
+    if not model.exists():
+        raise SystemExit(
+            f"Face landmark model not found at {model}.\n\n"
+            f"mediapipe >= 1.0 ships no model asset. Place 'face_landmarker.task' "
+            f"there, or point AWAS_FACE_MODEL at it.\n"
+            f"Everything else runs without it:\n"
+            f"    python -m scripts.demo_calibration\n"
+            f"    python -m scripts.demo_state_machine"
+        )
+
+    src = WebcamSource(
+        camera_index=args.video if args.video else args.camera,
+        driver_name=args.driver,
+        profile_dir=Path(args.profiles),
+        model_path=model,
+    )
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+
+    # Audio is optional: a missing phrase bank should cost you sound, not the
+    # session. Render it with `python -m scripts.render_phrases`.
+    try:
+        audio = NullAudioOut() if args.mute else StreamAudioOut(Path(args.phrases))
+    except (FileNotFoundError, Exception) as exc:   # noqa: B014
+        print(f"audio unavailable ({exc}); continuing muted")
+        audio = NullAudioOut()
+
+    session = None if args.no_log else SessionLog(
+        Path(args.sessions), driver=args.driver,
+        config={"source": args.video or f"camera{args.camera}", "muted": args.mute},
+    )
+    executor = ActionExecutor(audio=audio, dialogue=DialogueManager(),
+                              log=session, muted=args.mute)
+
+    log = deque(maxlen=8)
+    prev_t, fps = 0.0, 0.0
+
+    if session:
+        print(f"logging to {session.path}")
+    print("running — q quit, [ / ] speed, i ignition, k log a KSS rating 1-9")
+    try:
+        while True:
+            telemetry = src.read()
+            actions = sm.update(telemetry)
+            state = src.last_state
+
+            performed = executor.execute(
+                actions, t=telemetry.timestamp, telemetry=telemetry,
+                driving_state=sm.state.value,
+            )
+            for ex_ in performed:
+                detail = ex_.text or ex_.action.message
+                if ex_.suppressed:
+                    detail = f"[{ex_.suppressed}] {detail}"
+                elif ex_.playback:
+                    detail = f"({ex_.playback.latency_ms:.0f}ms) {detail}"
+                line = f"t={telemetry.timestamp:6.1f} {ex_.action.type.value:5} {detail}"
+                log.append(line)
+                print(" ", line)
+
+            if session:
+                session.sample(telemetry.timestamp, state, telemetry)
+
+            if state.t > prev_t:
+                fps = 0.8 * fps + 0.2 / (state.t - prev_t)
+            prev_t = state.t
+
+            frame = src.last_frame
+            if frame is not None:
+                frame = cv2.flip(frame, 1) if not args.video else frame
+                h, w = frame.shape[:2]
+                if state.face_present and state.landmarks:
+                    for idx in list(MEDIAPIPE_LEFT_EYE) + list(MEDIAPIPE_RIGHT_EYE):
+                        x, y = state.landmarks[idx]
+                        if not args.video:
+                            x = w - x
+                        cv2.circle(frame, (int(x), int(y)), 2, LEVEL_COLORS[min(state.drowsiness_level, 4)], -1)
+                state.landmarks_drawn = True
+                draw(cv2, frame, state, sm, telemetry, log, fps)
+                cv2.imshow("AWAS - Phase 1", frame)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("q"):
+                break
+            elif key == ord("["):
+                src.speed_kmh = max(0.0, src.speed_kmh - 10)
+            elif key == ord("]"):
+                src.speed_kmh += 10
+            elif key == ord("i"):
+                src.ignition_on = not src.ignition_on
+            elif ord("1") <= key <= ord("9") and session:
+                # Karolinska Sleepiness Scale — the only ground truth we get,
+                # and free to collect because the system can simply ask.
+                session.annotation(telemetry.timestamp, kind="kss",
+                                   value=key - ord("0"))
+                log.append(f"t={telemetry.timestamp:6.1f} kss   {key - ord('0')}")
+    finally:
+        executor.close()
+        src.close()
+        cv2.destroyAllWindows()
+        if session:
+            path = session.close(t=prev_t)
+            print(f"session log: {path}  ({session.counts})")
+        print("profile saved" if src.pipeline.profile_dir else "no profile dir")
+
+
+if __name__ == "__main__":
+    main()

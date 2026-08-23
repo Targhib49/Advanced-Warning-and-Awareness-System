@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+    a { color: #38D39B; } a:hover { color: #6FE3B8; }
+  </style>
+</helmet>
+<div style="width: 680px; height: 800px; background: #0A0C0D; color: #E8EDEF; display: flex; flex-direction: column; overflow: hidden; padding: 28px 30px; gap: 24px;">
+
+  <div style="display: flex; flex-direction: column; gap: 5px;">
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.14em; color: #F2B23E;">PHASE 2 &mdash; ADDED TO THE DEMO VIEW</div>
+    <div style="font-size: 24px; font-weight: 600; letter-spacing: -0.02em;">Three channels instead of one</div>
+    <div style="font-size: 14px; line-height: 1.5; color: #7C8A91;">The Phase 1 view stays exactly as it is. These panels appear beside it.</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 10px; letter-spacing: 0.12em; color: #4A565B;">CHANNEL AGREEMENT</div>
+    <div style="display: flex; flex-direction: column; gap: 11px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8A91; width: 62px;">facial</div>
+        <div style="flex-grow: 1; height: 8px; border-radius: 4px; background: #1D2225; overflow: hidden;"><div style="width: 58%; height: 100%; background: #F2B23E;"></div></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 60px; text-align: right;">L2 &middot; .84</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8A91; width: 62px;">vehicle</div>
+        <div style="flex-grow: 1; height: 8px; border-radius: 4px; background: #1D2225; overflow: hidden;"><div style="width: 74%; height: 100%; background: #F27A3E;"></div></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 60px; text-align: right;">L3 &middot; .71</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8A91; width: 62px;">voice</div>
+        <div style="flex-grow: 1; height: 8px; border-radius: 4px; background: #1D2225; overflow: hidden;"><div style="width: 74%; height: 100%; background: #F27A3E;"></div></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 60px; text-align: right;">L3 &middot; .62</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding-top: 9px; border-top: 1px solid #1D2225;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #E8EDEF; width: 62px; font-weight: 600;">fused</div>
+        <div style="flex-grow: 1; height: 8px; border-radius: 4px; background: #1D2225; overflow: hidden;"><div style="width: 74%; height: 100%; background: #F27A3E;"></div></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 60px; text-align: right; color: #F27A3E; font-weight: 600;">L3 &middot; .89</div>
+      </div>
+    </div>
+    <div style="font-size: 13px; line-height: 1.45; color: #5A6A72;">Two channels agreeing on L3 raises confidence above either one alone. That is the H2 claim, visible live.</div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 10px; letter-spacing: 0.12em; color: #4A565B;">VOICE CHANNEL</div>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+      <div style="background: #14181A; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 19px; font-weight: 600; color: #F27A3E;">2.4<span style="font-size: 12px; color: #4A565B; margin-left: 3px;">s</span></div>
+        <div style="font-size: 10px; letter-spacing: 0.08em; color: #4A565B;">REPLY LATENCY <span style="color: #5A6A72;">&middot; base 0.9</span></div>
+      </div>
+      <div style="background: #14181A; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 19px; font-weight: 600; color: #F2B23E;">3.1<span style="font-size: 12px; color: #4A565B; margin-left: 3px;">syl/s</span></div>
+        <div style="font-size: 10px; letter-spacing: 0.08em; color: #4A565B;">SPEECH RATE <span style="color: #5A6A72;">&middot; base 4.6</span></div>
+      </div>
+      <div style="background: #14181A; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 19px; font-weight: 600; color: #F2B23E;">41<span style="font-size: 12px; color: #4A565B; margin-left: 3px;">%</span></div>
+        <div style="font-size: 10px; letter-spacing: 0.08em; color: #4A565B;">PAUSE RATIO <span style="color: #5A6A72;">&middot; base 22</span></div>
+      </div>
+      <div style="background: #14181A; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 19px; font-weight: 600; color: #E8EDEF;">0.62</div>
+        <div style="font-size: 10px; letter-spacing: 0.08em; color: #4A565B;">ASR CONFIDENCE</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <div style="font-size: 10px; letter-spacing: 0.12em; color: #4A565B;">THIS DRIVER vs POPULATION</div>
+    <div style="background: #14181A; padding: 15px 17px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8A91; width: 96px;">EAR now</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: #E8EDEF;">0.19</div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8A91; width: 96px;">population</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; color: #5A6A72;">0.24 &rarr; <span style="color: #E0A93C;">mild</span></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding-top: 11px; border-top: 1px solid #1D2225;">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8A91; width: 96px;">their baseline</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: #E8EDEF;">0.276 &rarr; <span style="color: #F27A3E;">&minus;2.3 MAD, severe</span></div>
+      </div>
+    </div>
+    <div style="font-size: 13px; line-height: 1.45; color: #5A6A72;">A population threshold calls this mild. Against their own baseline it is severe. This is the whole personalization argument in one row.</div>
+  </div>
+
+  <div style="margin-top: auto; background: #14181A; border-left: 3px solid #F2B23E; padding: 13px 16px; font-size: 13px; line-height: 1.5; color: #A8B6BC;">
+    Needs the road camera and speech recognition, so it is not in the four-week build.
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":680,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

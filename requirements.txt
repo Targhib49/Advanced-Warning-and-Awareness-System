@@ -1,0 +1,23 @@
+# --- core (state machine, tests) ---
+pytest>=7.0
+PyYAML>=6.0
+
+# --- Layer 1 perception (webcam path) ---
+# Pinned below 1.0 deliberately: the 1.0.x macOS arm64 wheels force the Metal
+# delegate inside the face detector and abort the process when it is
+# unavailable, whatever delegate you ask for. 0.10.x has a working CPU path.
+# Neither series bundles a model asset — face_landmarker.task must be on disk.
+mediapipe>=0.10,<1.0
+opencv-python>=4.9
+
+# --- T1 training + export ---
+# numpy is pinned below 2.0: several wheels in this stack are still built
+# against 1.x, and mixing them crashes at import rather than at use.
+numpy>=1.26,<2.0
+torch>=2.2
+Pillow>=10.0
+scikit-learn>=1.2
+onnx>=1.16
+onnxruntime>=1.17
+# torch >= 2.9 defaults to the dynamo ONNX exporter, which needs onnxscript.
+onnxscript>=0.1

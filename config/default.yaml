@@ -1,0 +1,76 @@
+# AWAS tunable parameters.
+# Thresholds here are STARTING POINTS to be fitted on data (plan §4.1, §6.4),
+# not asserted values. Anything changed should be recorded with the run that
+# justified it.
+
+state_machine:
+  stopped_speed_kmh: 5.0
+  moving_speed_kmh: 5.0
+  traffic_jam_after_sec: 30.0
+  light_to_jam_sec: 120.0
+  shutdown_after_off_sec: 30.0
+
+  alert_cooldown_sec: 5.0
+  jam_nudge_cooldown_sec: 20.0
+  intervention_cooldown_sec:   # per escalation level
+    1: 90.0
+    2: 60.0
+    3: 30.0
+    4: 10.0
+
+  workload_ceiling:            # intervention fires only below this
+    1: 0.4
+    2: 0.7
+    3: 0.85
+    4: 1.01                    # critical ignores workload entirely
+  max_defer_sec: 10.0          # level 3+ is deferred, never suppressed
+
+  confidence_floor:            # below this, the level is downgraded
+    1: 0.3
+    2: 0.4
+    3: 0.5
+    4: 0.6
+
+  face_lost_grace_sec: 10.0
+  face_lost_level_cap: 3
+  jam_gap_open_m: 8.0
+
+# Layer 1 drowsiness thresholds (plan §4.1) — to be fitted, not guessed.
+driver:
+  window_sec: 60.0
+  update_hz: 1.0
+  microsleep_ms: 500
+
+  # Closure is measured on each driver's OWN scale, not against a fixed EAR.
+  # openness = (ear - closed_ref) / (open_ref - closed_ref), and P80 closure is
+  # openness < 0.20 — the same number for every face, which is the point.
+  # See awas/driver/calibration.py.
+  perclos_p: 0.80
+
+  calibration:
+    window_sec: 600.0          # presumed alert this long after trip start
+    max_pitch_deg: 20.0        # beyond this, EAR foreshortening corrupts it
+    max_yaw_deg: 25.0
+    min_samples: 900           # ~30 s at 30 fps
+    full_confidence_samples: 9000
+    min_dynamic_range: 0.04    # below this the driver never really blinked
+    cold_start_confidence: 0.35
+    drift_fraction: 0.25       # glasses on/off, camera moved, new driver
+    # Population fallbacks are PLACEHOLDERS — EAR values depend on the landmark
+    # model, so measure these on your own pipeline before reporting anything.
+    population_open_ear: 0.28
+    population_closed_ear: 0.08
+
+  perclos_thresholds:          # level: minimum PERCLOS
+    1: 0.08
+    2: 0.15
+    3: 0.25
+  hysteresis:
+    escalate_ticks: 3          # consecutive updates before going up
+    deescalate_ticks: 10       # and before coming back down
+
+# Latency budgets (plan §7.2) — the runtime asserts against these.
+budgets:
+  perception_loop_ms: 100
+  reflex_alert_ms: 300
+  dialogue_ms: 3000

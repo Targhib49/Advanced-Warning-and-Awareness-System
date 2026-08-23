@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", system-ui, sans-serif; }
+    a { color: #38D39B; } a:hover { color: #6FE3B8; }
+  </style>
+</helmet>
+<div style="width: 480px; height: 320px; background: #0A0C0D; color: #E8EDEF; display: flex; flex-direction: column; overflow: hidden; padding: 20px 26px 18px 26px;">
+
+  <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px;">
+    <div style="font-size: 17px; font-weight: 600;">Trip complete</div>
+    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.12em; color: #4A565B;">PARKED</div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px;">
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 25px; font-weight: 600;">3:12</div>
+      <div style="font-size: 11px; letter-spacing: 0.08em; color: #4A565B;">DRIVING</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 25px; font-weight: 600;">218<span style="font-size: 13px; color: #4A565B; margin-left: 3px;">km</span></div>
+      <div style="font-size: 11px; letter-spacing: 0.08em; color: #4A565B;">DISTANCE</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 25px; font-weight: 600; color: #F2B23E;">7</div>
+      <div style="font-size: 11px; letter-spacing: 0.08em; color: #4A565B;">NUDGES</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px;">
+    <div style="font-size: 11px; letter-spacing: 0.08em; color: #4A565B;">ALERTNESS OVER THE TRIP</div>
+    <div style="display: flex; gap: 2px; height: 34px; align-items: flex-end;">
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 45%; background: #E0A93C; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 45%; background: #E0A93C; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 68%; background: #F2B23E; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 45%; background: #E0A93C; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 45%; background: #E0A93C; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 68%; background: #F2B23E; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 100%; background: #F27A3E; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 68%; background: #F2B23E; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 45%; background: #E0A93C; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+      <div style="flex-grow: 1; height: 22%; background: #38D39B; border-radius: 1px;"></div>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4A565B;">
+      <div>20:30</div>
+      <div>23:42</div>
+    </div>
+  </div>
+
+  <div style="margin-top: auto; background: #14181A; border-left: 3px solid #F27A3E; padding: 10px 14px; font-size: 13px; line-height: 1.45; color: #A8B6BC;">
+    Worst stretch was <span style="color: #F27A3E; font-weight: 600;">22:50&ndash;23:05</span>. That is your third late-night trip this week.
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":480,"height":320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

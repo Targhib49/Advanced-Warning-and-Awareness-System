@@ -1,0 +1,435 @@
+<title>AWAS Study Tracks</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground:    #F5F8F7;
+    --surface:   #FFFFFF;
+    --raised:    #EDF2F0;
+    --border:    #DCE4E1;
+    --border-sf: #E8EEEC;
+    --ink:       #131A18;
+    --ink-mid:   #46534F;
+    --ink-dim:   #6D7C77;
+    --accent:    #0C7A57;
+    --accent-sf: #E2F2EB;
+    --now:       #0C7A57;
+    --soon:      #A66A08;
+    --later:     #6D7C77;
+    --shadow:    0 1px 2px rgba(19,26,24,.05), 0 8px 24px -16px rgba(19,26,24,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #0C100F;
+      --surface:   #141A18;
+      --raised:    #1B2321;
+      --border:    #263230;
+      --border-sf: #1E2725;
+      --ink:       #E8EFEC;
+      --ink-mid:   #A6B5B0;
+      --ink-dim:   #74857F;
+      --accent:    #3FD39D;
+      --accent-sf: #12241D;
+      --now:       #3FD39D;
+      --soon:      #E0A93C;
+      --later:     #74857F;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:    #0C100F;
+    --surface:   #141A18;
+    --raised:    #1B2321;
+    --border:    #263230;
+    --border-sf: #1E2725;
+    --ink:       #E8EFEC;
+    --ink-mid:   #A6B5B0;
+    --ink-dim:   #74857F;
+    --accent:    #3FD39D;
+    --accent-sf: #12241D;
+    --now:       #3FD39D;
+    --soon:      #E0A93C;
+    --later:     #74857F;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px 120px; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { text-decoration-thickness: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+  h1, h2, h3 { font-family: "IBM Plex Serif", Georgia, serif; text-wrap: balance; margin: 0; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  /* ---------- masthead ---------- */
+  header { padding: 72px 0 40px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: clamp(34px, 6vw, 50px); font-weight: 600; line-height: 1.08; margin: 14px 0 18px; letter-spacing: -.02em; }
+  header p { font-size: 18px; color: var(--ink-mid); margin: 0; max-width: 60ch; }
+
+  /* ---------- entry points ---------- */
+  .entries { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 12px; margin: 26px 0 0; }
+  .entry {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow);
+  }
+  .entry b { font-size: 14.5px; font-weight: 600; }
+  .entry span { font-size: 13.5px; color: var(--ink-dim); line-height: 1.5; }
+  .entry code { font-size: 12px; }
+
+  /* ---------- sections ---------- */
+  section { padding-top: 56px; }
+  section > h2 { font-size: 27px; font-weight: 600; letter-spacing: -.015em; margin-bottom: 10px; }
+  .lede { color: var(--ink-mid); max-width: 64ch; margin: 0 0 4px; }
+
+  /* ---------- track ---------- */
+  .track {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
+    padding: 24px 26px; margin-top: 16px; box-shadow: var(--shadow);
+  }
+  .track-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .track-num {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 600;
+    color: var(--ink-dim); font-variant-numeric: tabular-nums;
+  }
+  .track h3 { font-size: 20.5px; font-weight: 600; letter-spacing: -.01em; }
+  .track > p { color: var(--ink-mid); margin: 10px 0 0; max-width: 62ch; font-size: 15.5px; }
+
+  .tag {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 3px; white-space: nowrap;
+    border: 1px solid currentColor;
+  }
+  .tag.now   { color: var(--now); }
+  .tag.soon  { color: var(--soon); }
+  .tag.later { color: var(--later); }
+
+  .unlocks {
+    margin-top: 14px; padding: 11px 14px; background: var(--raised);
+    border-left: 2px solid var(--accent); border-radius: 0 3px 3px 0;
+    font-size: 14px; color: var(--ink-mid);
+  }
+  .unlocks code {
+    font-family: "IBM Plex Mono", monospace; font-size: 12.5px;
+    color: var(--ink); background: var(--surface);
+    padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border-sf);
+  }
+
+  ul.res { list-style: none; padding: 0; margin: 16px 0 0; display: flex; flex-direction: column; gap: 9px; }
+  ul.res li { display: flex; gap: 10px; align-items: baseline; font-size: 14.5px; line-height: 1.5; }
+  ul.res .kind {
+    font-family: "IBM Plex Mono", monospace; font-size: 10.5px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-dim); min-width: 62px; flex-shrink: 0; padding-top: 2px;
+  }
+  ul.res .note { color: var(--ink-dim); }
+
+  /* ---------- defend ---------- */
+  .qa { border-top: 1px solid var(--border); padding: 18px 0; display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .qa:last-child { border-bottom: 1px solid var(--border); }
+  .qa .q { font-family: "IBM Plex Serif", Georgia, serif; font-size: 17.5px; font-weight: 500; }
+  .qa .a { color: var(--ink-mid); font-size: 15px; max-width: 64ch; }
+  .qa .a code {
+    font-family: "IBM Plex Mono", monospace; font-size: 12.5px;
+    background: var(--raised); padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* ---------- papers ---------- */
+  .paper { border-top: 1px solid var(--border-sf); padding: 13px 0; font-size: 14.5px; }
+  .paper:first-of-type { border-top: 1px solid var(--border); }
+  .paper b { font-weight: 600; }
+  .paper .cite { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-dim); display: block; margin-top: 3px; }
+  .paper .why { color: var(--ink-mid); display: block; margin-top: 5px; max-width: 64ch; }
+
+  /* ---------- skip ---------- */
+  .skip { background: var(--raised); border: 1px solid var(--border); border-radius: 5px; padding: 22px 26px; margin-top: 16px; }
+  .skip ul { margin: 12px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .skip li { color: var(--ink-mid); font-size: 15px; }
+  .skip li b { color: var(--ink); font-weight: 600; }
+
+  footer { margin-top: 72px; padding-top: 22px; border-top: 1px solid var(--border); color: var(--ink-dim); font-size: 13.5px; }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 0 18px 80px; }
+    header { padding-top: 48px; }
+    .track { padding: 20px 18px; }
+    ul.res li { flex-direction: column; gap: 2px; }
+    ul.res .kind { padding-top: 0; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">AWAS · Advanced Warning &amp; Awareness System</div>
+  <h1>What to learn, and why it matters here</h1>
+  <p>Eight tracks, ordered so the parts you need to <em>defend</em> the project come before the parts you need to <em>extend</em> it. Every track names the file it unlocks, so nothing here is abstract — you can read the topic, then go read the code that uses it.</p>
+
+  <div class="entries">
+    <div class="entry">
+      <b>New to Python</b>
+      <span>Start at Track 1 and do it properly. Everything else assumes it.</span>
+    </div>
+    <div class="entry">
+      <b>Comfortable in Python</b>
+      <span>Skim Track 1 for the idioms this codebase uses, then start at Track 2.</span>
+    </div>
+    <div class="entry">
+      <b>Already trained a model</b>
+      <span>Start at Track 4, then Tracks 3 and 7 — the domain science and the research method are what judges probe.</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <h2>Before anything else</h2>
+  <p class="lede">Ninety minutes, everyone, whatever your level. You cannot learn the parts without knowing what the whole is for.</p>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">00</span>
+      <h3>Run it and read the plan</h3>
+      <span class="tag now">Do this first</span>
+    </div>
+    <p>Read <code>docs/00-master-plan.md</code> §2 for the thesis and §6 for how we intend to prove it. Then run all three demos and watch what they print. If you can say in one sentence why alarms fail and what AWAS does instead, you are ready for the rest.</p>
+    <div class="unlocks">
+      <code>python -m scripts.demo_state_machine</code> · <code>python -m scripts.demo_calibration</code> · <code>python -m scripts.run_webcam</code>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The tracks</h2>
+  <p class="lede">Numbered by dependency, not importance — later tracks assume earlier ones. Times are rough and assume a few hours a week.</p>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">01</span>
+      <h3>Python, and the six idioms this codebase leans on</h3>
+      <span class="tag now">~2 weeks</span>
+    </div>
+    <p>Not all of Python — these six: <b>dataclasses</b>, <b>enums</b>, <b>type hints</b>, <b>abstract base classes and Protocols</b>, <b>context managers</b>, and <b>pytest</b>. Almost every file uses the first three in the first ten lines. Learning them makes the code readable in an afternoon instead of a fortnight.</p>
+    <div class="unlocks">Unlocks reading <code>awas/core/telemetry.py</code> (dataclass), <code>awas/core/states.py</code> (enum), <code>awas/sources/base.py</code> (ABC)</div>
+    <ul class="res">
+      <li><span class="kind">Course</span><span><a href="https://automatetheboringstuff.com/">Automate the Boring Stuff</a> — free full text. Chapters 1–6 and 9 are the useful ones here.</span></li>
+      <li><span class="kind">Docs</span><span><a href="https://docs.python.org/3/tutorial/">The official Python tutorial</a> — dry but correct. Sections 4, 5, 9.</span></li>
+      <li><span class="kind">Docs</span><span><a href="https://docs.pytest.org/">pytest documentation</a> — read "Get Started" and "How to write and report assertions", then open our <code>tests/</code> folder.</span></li>
+      <li><span class="kind">Video</span><span>Search "python dataclasses tutorial" — a 15-minute video is enough. Then read <code>telemetry.py</code>.</span></li>
+    </ul>
+  </div>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">02</span>
+      <h3>Images, landmarks and the eye aspect ratio</h3>
+      <span class="tag now">~1 week</span>
+    </div>
+    <p>An image is a NumPy array of numbers. A face mesh is 478 points that a neural network places on a face. EAR is a ratio between six of those points. That is genuinely the whole of Layer 1's geometry — and understanding why EAR breaks under head rotation is the thing that makes the rest of our design make sense.</p>
+    <div class="unlocks">Unlocks <code>awas/driver/ear.py</code>, <code>awas/driver/landmarks.py</code></div>
+    <ul class="res">
+      <li><span class="kind">Docs</span><span><a href="https://docs.opencv.org/4.x/d6/d00/tutorial_py_root.html">OpenCV-Python tutorials</a> — "Gui Features" and "Core Operations" only. Skip the rest for now.</span></li>
+      <li><span class="kind">Docs</span><span><a href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker">MediaPipe Face Landmarker</a> — what the model gives you and in what coordinate system.</span></li>
+      <li><span class="kind">Course</span><span><a href="https://www.kaggle.com/learn/computer-vision">Kaggle Learn: Computer Vision</a> — free, short, hands-on.</span></li>
+      <li><span class="kind">Paper</span><span>Soukupová &amp; Čech (2016) — the EAR formula, four pages. See the reading list below.</span></li>
+    </ul>
+  </div>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">03</span>
+      <h3>The sleep science — where PERCLOS comes from</h3>
+      <span class="tag now">~1 week</span>
+    </div>
+    <p>This is the track most teams skip and the one judges probe hardest. PERCLOS is not something we invented: it is a validated measure from 1990s driving research, defined as the fraction of a time window the eyes are more than 80&#37; closed. Know why it beats counting blinks, what a microsleep is, what the Karolinska Sleepiness Scale is, and why 02:00–06:00 is the dangerous window. Being able to cite the origin of your own metric is the difference between a project and a science project.</p>
+    <div class="unlocks">Unlocks <code>awas/driver/window.py</code> — and every threshold in <code>config/default.yaml</code></div>
+    <ul class="res">
+      <li><span class="kind">Paper</span><span>Dinges &amp; Grace (1998), the PERCLOS validation report — see the reading list.</span></li>
+      <li><span class="kind">Reading</span><span>Search "Karolinska Sleepiness Scale" — a one-page 1–9 scale. We ask for it at trip start and end.</span></li>
+      <li><span class="kind">Reading</span><span>Search "circadian rhythm drowsy driving crash statistics" — the time-of-day pattern is the strongest single predictor in our Phase 4 model.</span></li>
+      <li><span class="kind">Reading</span><span>Search "standard deviation of lane position drowsiness" — why vehicle behaviour is evidence, not just cameras.</span></li>
+    </ul>
+  </div>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">04</span>
+      <h3>Machine learning, and the one concept that makes our numbers believable</h3>
+      <span class="tag now">~3 weeks</span>
+    </div>
+    <p>Supervised classification, training and validation, overfitting, and metrics beyond accuracy. But the concept to understand above all others is <b>data leakage</b>, and specifically why we split the dataset <em>by subject</em> rather than by image. MRL has 37 people with hundreds of near-identical photos each. Split randomly and the same eyes appear in training and testing, and you report 99&#37; that means nothing. Split by person and you get our 98.6&#37; on seven people the model has never seen — a number that survives a hostile question.</p>
+    <div class="unlocks">Unlocks <code>training/mrl.py</code> (<code>split_by_subject</code>), <code>training/baselines.py</code>, <code>training/train_eyestate.py</code></div>
+    <ul class="res">
+      <li><span class="kind">Course</span><span><a href="https://www.kaggle.com/learn/intro-to-machine-learning">Kaggle Learn: Intro to ML</a> then <a href="https://www.kaggle.com/learn/intermediate-machine-learning">Intermediate ML</a> — the second contains a dedicated Data Leakage lesson. Do that lesson twice.</span></li>
+      <li><span class="kind">Course</span><span><a href="https://developers.google.com/machine-learning/crash-course">Google ML Crash Course</a> — free, well-paced, good on overfitting and generalisation.</span></li>
+      <li><span class="kind">Video</span><span><a href="https://www.3blue1brown.com/topics/neural-networks">3Blue1Brown — Neural Networks</a>. Four videos. The best intuition available anywhere for what a network is actually doing.</span></li>
+      <li><span class="kind">Video</span><span><a href="https://statquest.org/">StatQuest</a> — precision, recall, ROC and confusion matrices, explained slowly and correctly.</span></li>
+      <li><span class="kind">Docs</span><span><a href="https://pytorch.org/tutorials/">PyTorch tutorials</a> — "Learn the Basics". Then read <code>training/model.py</code>; it is only 50 lines.</span></li>
+      <li><span class="kind">Course</span><span><a href="https://course.fast.ai/">fast.ai Practical Deep Learning</a> — free, top-down, excellent. Bigger commitment; start it after the competition.</span></li>
+    </ul>
+  </div>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">05</span>
+      <h3>State machines and why this project has 176 tests</h3>
+      <span class="tag now">~4 days</span>
+    </div>
+    <p>A state machine is a set of states, the rules for moving between them, and nothing else. Ours decides whether the vehicle is parked, moving, at a light or in a jam, and it is <em>pure</em> — no camera, no clock, no model. That purity is why it can be tested exhaustively, and being able to explain that design choice is worth more to a judge than any single feature.</p>
+    <div class="unlocks">Unlocks <code>awas/core/machine.py</code>, <code>tests/test_state_machine.py</code></div>
+    <ul class="res">
+      <li><span class="kind">Reading</span><span>Search "finite state machine explained" — the concept is genuinely small. An hour is enough.</span></li>
+      <li><span class="kind">Reading</span><span>Search "pure function side effects" — then find every place <code>machine.py</code> avoids reading the clock.</span></li>
+      <li><span class="kind">Exercise</span><span>Break something on purpose. Change a threshold in <code>config/default.yaml</code>, run the tests, and read which ones fail and why.</span></li>
+    </ul>
+  </div>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">06</span>
+      <h3>Git, so three people can work without destroying each other's work</h3>
+      <span class="tag soon">~3 days</span>
+    </div>
+    <p>Branches, commits, merges, and how to read a diff. With several of you on one codebase this stops being optional quite quickly.</p>
+    <div class="unlocks">Unlocks working in parallel instead of emailing zip files</div>
+    <ul class="res">
+      <li><span class="kind">Book</span><span><a href="https://git-scm.com/book/en/v2">Pro Git</a> — free and complete. Chapters 1–3 cover everything you need.</span></li>
+      <li><span class="kind">Practice</span><span>Search "learn git branching interactive" — a visual sandbox beats reading about merges.</span></li>
+    </ul>
+  </div>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">07</span>
+      <h3>How research is actually judged</h3>
+      <span class="tag now">~1 week</span>
+    </div>
+    <p>This is a research competition, not a science fair, and the difference is that a claim must be falsifiable. Learn what a hypothesis is, what a control condition is, what an ablation is, and why effect size matters more than a p-value when your sample is small — which yours will be. Our §6 already has hypotheses H1–H3 written this way; understand them well enough to argue for them.</p>
+    <div class="unlocks">Unlocks <code>docs/00-master-plan.md</code> §6 — the evaluation protocol</div>
+    <ul class="res">
+      <li><span class="kind">Paper</span><span>Keshav, "How to Read a Paper" — three pages, the three-pass method. Read it before any other paper.</span></li>
+      <li><span class="kind">Reading</span><span><a href="https://www.cos.io/initiatives/prereg">Center for Open Science — preregistration</a>. Deciding your analysis before collecting data is what makes a small study credible.</span></li>
+      <li><span class="kind">Video</span><span><a href="https://statquest.org/">StatQuest</a> again — p-values, confidence intervals, and what they do not mean.</span></li>
+      <li><span class="kind">Reading</span><span>Search "within-subject vs between-subject design" — why we can run a meaningful study with very few participants.</span></li>
+    </ul>
+  </div>
+
+  <div class="track">
+    <div class="track-head">
+      <span class="track-num">08</span>
+      <h3>Getting it onto the Raspberry Pi</h3>
+      <span class="tag later">After the competition</span>
+    </div>
+    <p>Linux basics, the Pi camera stack, and why we export models to ONNX and quantise them to int8. None of this is needed to defend the project — but it is what turns a laptop demo into the product in the plan.</p>
+    <div class="unlocks">Unlocks <code>training/export.py</code>, and Milestone 5</div>
+    <ul class="res">
+      <li><span class="kind">Docs</span><span><a href="https://www.raspberrypi.com/documentation/">Raspberry Pi documentation</a> — the Camera and Linux sections.</span></li>
+      <li><span class="kind">Docs</span><span><a href="https://onnxruntime.ai/docs/">ONNX Runtime docs</a> — what an exported model is and why it runs faster than PyTorch on a small board.</span></li>
+      <li><span class="kind">Reading</span><span>Search "int8 quantization neural network explained" — and note our own finding that at 23.5k parameters it barely helps.</span></li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2>Six questions a judge will ask</h2>
+  <p class="lede">If each student can answer these without hedging, the comprehension goal is met. The answers already exist in the repo — the work is knowing where.</p>
+
+  <div class="qa">
+    <div class="q">“Isn't this just detecting closed eyes?”</div>
+    <div class="a">No — a single closed frame is a blink. We measure PERCLOS over a 60-second window, separate blinks from microsleeps by duration, and require a level to hold for three consecutive updates before escalating. See <code>awas/driver/window.py</code>.</div>
+  </div>
+
+  <div class="qa">
+    <div class="q">“Why should we believe 98.6&#37;?”</div>
+    <div class="a">Because it is measured on seven people the model never saw during training, and because we report the logistic-regression baseline next to it — 86.8&#37;. The gap is what shows the network earned its place. A random per-image split would have looked better and meant nothing.</div>
+  </div>
+
+  <div class="qa">
+    <div class="q">“Isn't talking to a drowsy driver a distraction?”</div>
+    <div class="a">That is exactly what hypothesis H3 tests. Conversation is suppressed when the workload estimate is high, emergencies use pre-recorded audio that never waits for an AI, and we measure lane position to detect if we are making things worse. See master plan §5.2.</div>
+  </div>
+
+  <div class="qa">
+    <div class="q">“What happens when the camera is blocked?”</div>
+    <div class="a">Confidence drops, the level is capped at 3 instead of 4, and the driver is told once. A lost face is never counted as a closed eye — there is a test named for it. See §5.4 and <code>tests/test_window.py</code>.</div>
+  </div>
+
+  <div class="qa">
+    <div class="q">“Why not just use a fixed EAR threshold?”</div>
+    <div class="a">Because eye shape varies two- to threefold between people, so one threshold is too twitchy for one driver and too deaf for the next. Run <code>demo_calibration</code> — it shows the same true drowsiness read correctly for both drivers on a personal scale and wrongly for both on a fixed one.</div>
+  </div>
+
+  <div class="qa">
+    <div class="q">“What is actually new here?”</div>
+    <div class="a">Measuring whether an intervention <em>worked</em> — time-to-relapse per intervention type. No system on the market does this, because none of them talk to the driver and therefore none can measure the reply. See <code>docs/01-architecture-v3.md</code> §2.</div>
+  </div>
+</section>
+
+<section>
+  <h2>The five papers worth reading</h2>
+  <p class="lede">Search each title — all five are freely available. Read them with Keshav's three-pass method rather than start to finish.</p>
+
+  <div class="paper">
+    <b>Real-Time Eye Blink Detection using Facial Landmarks</b>
+    <span class="cite">Soukupová &amp; Čech, 2016</span>
+    <span class="why">Where EAR comes from. Note that their best result used a classifier over a window of EAR values, not a bare threshold — the authors did not recommend the version most tutorials copy.</span>
+  </div>
+
+  <div class="paper">
+    <b>PERCLOS: A Valid Psychophysiological Measure of Alertness</b>
+    <span class="cite">Dinges &amp; Grace, 1998 · report FHWA-MCRT-98-006</span>
+    <span class="why">The origin of the measure at the centre of Layer 1. Originally scored by humans watching video, which is why it is a sound measure independently of any automatic detector.</span>
+  </div>
+
+  <div class="paper">
+    <b>Real-time Facial Surface Geometry from Monocular Video on Mobile GPUs</b>
+    <span class="cite">Kartynnik et al., 2019</span>
+    <span class="why">The model behind MediaPipe Face Mesh — the thing producing our 478 landmarks. Worth knowing that our "geometric" pipeline sits on top of a neural network.</span>
+  </div>
+
+  <div class="paper">
+    <b>Subjective and objective sleepiness in the active individual</b>
+    <span class="cite">Åkerstedt &amp; Gillberg, 1990</span>
+    <span class="why">The Karolinska Sleepiness Scale. Our only ground-truth label for how a driver actually felt, and free to collect because the system can simply ask.</span>
+  </div>
+
+  <div class="paper">
+    <b>How to Read a Paper</b>
+    <span class="cite">S. Keshav, 2007</span>
+    <span class="why">Three pages that will save you weeks. Read this one first, then use its method on the four above.</span>
+  </div>
+</section>
+
+<section>
+  <h2>What not to learn yet</h2>
+  <p class="lede">Time before the deadline is the scarcest thing you have. These are all worth knowing eventually and none of them will help you now.</p>
+  <div class="skip">
+    <ul>
+      <li><b>Transformers and large language models.</b> Phase 1 uses written templates, not a language model. Fascinating, irrelevant until Milestone 4.</li>
+      <li><b>Docker, Kubernetes, cloud deployment.</b> The whole point is that this runs offline on a small board.</li>
+      <li><b>Training big models.</b> Ours has 23,538 parameters and trains in two minutes on a laptop. Scale is not the problem you have.</li>
+      <li><b>Web frameworks.</b> The fleet dashboard is Phase 3 and it is a mockup for now.</li>
+      <li><b>Writing your own face detector.</b> MediaPipe took Google years. Use it and spend your effort where you can actually be better than the alternatives.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  AWAS · Advanced Warning &amp; Awareness System · study tracks for the 2026 research competition. Every link is free to access; the papers are searchable by title.
+</footer>
+
+</div>
