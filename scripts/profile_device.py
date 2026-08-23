@@ -172,6 +172,68 @@ def soak(seconds: float, model: Path) -> Dict:
     }
 
 
+def grab_face_frame(index: int, model: Path, countdown: int) -> Optional[np.ndarray]:
+    """Capture a frame that actually contains a face.
+
+    Three things go wrong if you just call read() once, and all three make the
+    profiler report flattering nonsense rather than failing:
+
+      * a webcam's first frames are black or badly exposed while auto-exposure
+        settles, so the mesh finds nothing;
+      * the operator has not sat down yet;
+      * and with no face detected, MediaPipe skips the landmark stage entirely,
+        so the measured cost is of the detector alone — which is the cheap half.
+
+    So: warm up, count down, then keep looking until a face appears.
+    """
+    import cv2
+
+    cap = cv2.VideoCapture(index)
+    if not cap.isOpened():
+        print(f"camera {index} would not open; profiling on a blank frame\n")
+        return None
+
+    try:
+        for _ in range(15):          # let exposure settle
+            cap.read()
+
+        for n in range(countdown, 0, -1):
+            print(f"  capturing in {n}…", flush=True)
+            deadline = time.time() + 1.0
+            while time.time() < deadline:
+                cap.read()
+
+        from awas.driver.landmarks import MediaPipeLandmarker
+
+        if not model.exists():
+            ok, frame = cap.read()
+            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if ok else None
+
+        lm = MediaPipeLandmarker(model)
+        try:
+            for attempt in range(60):
+                ok, frame = cap.read()
+                if not ok:
+                    continue
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                obs = lm.observe(rgb, time.time())
+                if obs.face_present:
+                    print(f"  face found (EAR {obs.ear:.3f}, "
+                          f"pitch {obs.pitch_deg:+.0f}, yaw {obs.yaw_deg:+.0f})\n")
+                    return rgb
+        finally:
+            lm.close()
+
+        print("  ** NO FACE FOUND in 60 frames **")
+        print("  Profiling anyway, but the landmark numbers will measure the")
+        print("  detector alone and understate the real cost. Check the lens,")
+        print("  the lighting, and that someone is actually in shot.\n")
+        ok, frame = cap.read()
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if ok else None
+    finally:
+        cap.release()
+
+
 # ---------------- main ----------------
 
 def main() -> None:
@@ -186,6 +248,8 @@ def main() -> None:
                     help="only verify the landmark model and eye indices")
     ap.add_argument("--camera", type=int, default=None,
                     help="grab one real frame from this camera to profile against")
+    ap.add_argument("--countdown", type=int, default=5,
+                    help="seconds to get into shot before the frame is captured")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
@@ -194,15 +258,7 @@ def main() -> None:
 
     image = None
     if args.camera is not None:
-        import cv2
-        cap = cv2.VideoCapture(args.camera)
-        ok, frame = cap.read()
-        cap.release()
-        if ok:
-            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            print(f"using one live frame from camera {args.camera}\n")
-        else:
-            print(f"camera {args.camera} gave no frame; using a blank one\n")
+        image = grab_face_frame(args.camera, Path(args.model), args.countdown)
 
     report: Dict = {"device": device_info().__dict__}
 
@@ -214,6 +270,9 @@ def main() -> None:
     else:
         print(f"  p50 {lm['p50_ms']:.2f} ms   p95 {lm['p95_ms']:.2f} ms   "
               f"faces {lm['faces_detected']}/{lm['frames']}")
+        if lm["faces_detected"] == 0:
+            print("  ** no face in any frame — this measures the detector only,")
+            print("     not the mesh. Do not quote these numbers. **")
         print(f"  budget {BUDGETS['mesh_features_ms']:.0f} ms -> "
               f"{verdict(lm['p95_ms'], BUDGETS['mesh_features_ms'])}")
         if "ear_median" in lm:
