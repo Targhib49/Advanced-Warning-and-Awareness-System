@@ -1,0 +1,28 @@
+# Raspberry Pi (aarch64 Linux) requirements.
+#
+#     pip install -r requirements-pi.txt
+#
+# This file exists because ONE pin cannot serve both machines: mediapipe
+# stopped publishing aarch64 Linux wheels after 0.10.18, so the 0.10.35 that
+# the code is validated against on macOS is simply not installable here.
+# 0.10.18 is the closest available and uses the same Tasks API.
+#
+# CONSEQUENCE, and it needs checking on the device: the eye-landmark indices in
+# awas/driver/ear.py were verified against 0.10.35. Index sets have moved
+# between mediapipe releases before. Run scripts/profile_device.py --landmarks
+# on the Pi and confirm the points still sit on the eyes before trusting a
+# single number the system produces.
+
+mediapipe==0.10.18
+opencv-python>=4.9
+
+numpy>=1.26,<2.0
+Pillow>=10.0
+sounddevice>=0.4
+
+# Inference only on the Pi — no torch. The model arrives as ONNX, exported on
+# a development machine by training/export.py.
+onnxruntime>=1.17
+
+PyYAML>=6.0
+pytest>=7.0

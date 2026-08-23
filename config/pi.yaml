@@ -1,0 +1,44 @@
+# Raspberry Pi 5 overrides.
+#
+#   AWAS_CONFIG=config/pi.yaml python -m scripts.run_webcam
+#
+# Only the values that differ from config/default.yaml are here. Every number
+# is a STARTING POINT to be replaced by a measurement from
+# scripts/profile_device.py run on the actual board, at the ambient temperature
+# the vehicle will actually see — not on a desk in air conditioning.
+
+camera:
+  # 480p is a deliberate trade. The eye crops the mesh works from are small
+  # either way, and halving the pixels roughly halves the per-frame cost.
+  width: 640
+  height: 480
+  fps: 15                # 30 on a Pi 5 is optimistic; measure before raising
+
+  # Thermal ladder (plan §5.4). Past the ceiling the runtime drops its own
+  # frame rate rather than letting the kernel throttle unpredictably — a
+  # silently throttled safety system is a broken one.
+  thermal:
+    ceiling_c: 75.0      # sustained target at 25 C ambient
+    critical_c: 82.0     # below this and the SoC throttles itself
+    degraded_fps: 8      # frame rate to fall back to
+    check_every_sec: 10
+
+driver:
+  # A slower camera means fewer samples per window, so the minimum sample
+  # counts scale with it. At 15 fps, 900 samples is 60 s rather than 30 s.
+  calibration:
+    min_samples: 450             # ~30 s at 15 fps
+    full_confidence_samples: 4500  # ~5 min at 15 fps
+
+budgets:
+  # From the Mac reference run: mesh p95 1.98 ms, loop p95 1.99 ms,
+  # reflex audio max 10.6 ms. A Pi 5 is several times slower, so these stay at
+  # the plan §7.2 values until the device says otherwise.
+  perception_loop_ms: 100
+  reflex_alert_ms: 300
+
+audio:
+  # ALSA/PipeWire device index. `python -c "import sounddevice; print(sounddevice.query_devices())"`
+  # lists them. null means the system default, which is usually right.
+  device: null
+  blocksize: 512       # larger than the Mac's 256: safer against underruns

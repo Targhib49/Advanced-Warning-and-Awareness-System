@@ -123,14 +123,25 @@ DEFAULT_MODEL_NAME = "face_landmarker.task"
 
 
 def _check_mediapipe_version() -> None:
-    """Fail early and legibly on a mediapipe that cannot run on CPU here.
+    """Refuse a mediapipe that is known not to run on CPU on THIS platform.
 
-    The 1.0.x macOS arm64 wheels initialise Metal inside
+    The 1.0.x *macOS* arm64 wheels initialise Metal inside
     TensorsToDetectionsCalculator regardless of the requested delegate, so the
-    process dies with an abort trace rather than a Python exception — which is
-    unreadable if you have not seen it before. 0.10.x has a working CPU path.
+    process dies with a C++ abort rather than a Python exception — unreadable
+    if you have not seen it before.
+
+    That is a macOS problem specifically. Linux has no Metal, and on the Pi the
+    1.x aarch64 wheels are a legitimate option — so the check is platform-gated
+    rather than blanket. Note also that mediapipe dropped aarch64 Linux wheels
+    after 0.10.18: on a Pi, pip cannot give you the 0.10.35 this is validated
+    against. See docs/03-pi-deployment.md.
     """
+    import sys
+
     import mediapipe as mp
+
+    if sys.platform != "darwin":
+        return
 
     raw = getattr(mp, "__version__", "0")
     try:
@@ -141,7 +152,7 @@ def _check_mediapipe_version() -> None:
         raise RuntimeError(
             f"mediapipe {raw} is installed. Its macOS builds force the Metal "
             f"delegate inside the face detector and abort the process on CPU.\n"
-            f"Pin the 0.10 series:\n"
+            f"On macOS, pin the 0.10 series:\n"
             f"    pip install 'mediapipe>=0.10,<1.0'"
         )
 

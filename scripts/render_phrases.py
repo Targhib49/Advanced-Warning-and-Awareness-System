@@ -54,12 +54,8 @@ def make_alarm_tone(seconds: float = 0.45, rate: int = SAMPLE_RATE) -> bytes:
     return bytes(out)
 
 
-def render_speech(text: str, path: Path, voice: str | None) -> None:
-    if not shutil.which("say"):
-        raise SystemExit(
-            "`say` not found. On macOS it is built in; on the Pi use Piper and "
-            "point this script at it instead."
-        )
+def render_with_say(text: str, path: Path, voice: str | None) -> None:
+    """macOS built-in TTS."""
     cmd = ["say", "-o", str(path), "--data-format=LEI16@22050"]
     if voice:
         cmd += ["-v", voice]
@@ -67,9 +63,56 @@ def render_speech(text: str, path: Path, voice: str | None) -> None:
     subprocess.run(cmd, check=True, capture_output=True)
 
 
+def render_with_piper(text: str, path: Path, model: str) -> None:
+    """Piper: offline neural TTS, the Pi's answer to `say`.
+
+    Piper voices are per-language, so this is also where an Indonesian build
+    would switch over — pass an id_ID voice model and the whole bank re-renders
+    in Indonesian with no other code change.
+    """
+    subprocess.run(
+        ["piper", "--model", model, "--output_file", str(path)],
+        input=text, text=True, check=True, capture_output=True,
+    )
+
+
+def render_speech(text: str, path: Path, voice: str | None,
+                  piper_model: str | None) -> None:
+    """Render one line with whichever engine this machine has.
+
+    Both run offline and both happen at BUILD time, never while driving — which
+    is why swapping engines between platforms is safe. The runtime only ever
+    plays files.
+    """
+    if piper_model:
+        if not shutil.which("piper"):
+            raise SystemExit(
+                "piper not found on PATH. Install it, or drop --piper-model to "
+                "use the system TTS."
+            )
+        return render_with_piper(text, path, piper_model)
+
+    if shutil.which("say"):
+        return render_with_say(text, path, voice)
+
+    if shutil.which("piper"):
+        raise SystemExit(
+            "piper is installed but no voice model was given. Pass one:\n"
+            "    python -m scripts.render_phrases --piper-model /path/voice.onnx"
+        )
+
+    raise SystemExit(
+        "No text-to-speech engine found.\n"
+        "  macOS: `say` is built in and should already be here.\n"
+        "  Pi:    install piper, then pass --piper-model <voice>.onnx"
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Pre-render the phrase bank to WAV.")
     ap.add_argument("--voice", default=None, help="macOS voice name, e.g. Daniel")
+    ap.add_argument("--piper-model", default=None,
+                    help="path to a Piper .onnx voice (Raspberry Pi)")
     ap.add_argument("--out", default=str(OUT_DIR))
     ap.add_argument("--force", action="store_true", help="re-render existing clips")
     args = ap.parse_args()
@@ -92,7 +135,7 @@ def main() -> None:
         if path.exists() and not args.force:
             skipped += 1
         else:
-            render_speech(text, path, args.voice)
+            render_speech(text, path, args.voice, args.piper_model)
             rendered += 1
         manifest[clip_id] = {
             "text": text,

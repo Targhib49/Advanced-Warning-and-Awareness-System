@@ -13,6 +13,8 @@ from a beeper, and a judge cannot see it any other way.
 from __future__ import annotations
 
 import argparse
+import signal
+import sys
 from collections import deque
 from pathlib import Path
 
@@ -20,6 +22,7 @@ from awas.companion.dialogue import DialogueManager
 from awas.core.machine import StateMachine
 from awas.core.states import DrivingState
 from awas.driver.ear import MEDIAPIPE_LEFT_EYE, MEDIAPIPE_RIGHT_EYE
+from awas.runtime.conditions import describe_all, get as get_condition
 from awas.runtime.executor import ActionExecutor
 from awas.runtime.session_log import SessionLog
 from awas.sources.webcam import WebcamSource, default_model_path
@@ -90,9 +93,21 @@ def main() -> None:
     ap.add_argument("--model", default=None)
     ap.add_argument("--phrases", default="assets/phrases")
     ap.add_argument("--sessions", default="data/sessions")
+    ap.add_argument("--condition", default="C",
+                    help="experimental condition A/B/C/D — see --conditions")
+    ap.add_argument("--conditions", action="store_true",
+                    help="list the experimental conditions and exit")
     ap.add_argument("--mute", action="store_true", help="decide and log, but stay silent")
     ap.add_argument("--no-log", action="store_true")
+    ap.add_argument("--headless", action="store_true",
+                    help="no window — for a Pi running as a boot service")
     args = ap.parse_args()
+
+    if args.conditions:
+        print(describe_all())
+        return
+
+    condition = get_condition(args.condition)
 
     import cv2
 
@@ -125,19 +140,36 @@ def main() -> None:
 
     session = None if args.no_log else SessionLog(
         Path(args.sessions), driver=args.driver,
-        config={"source": args.video or f"camera{args.camera}", "muted": args.mute},
+        config={
+            "source": args.video or f"camera{args.camera}",
+            "muted": args.mute,
+            "condition": condition.id,
+            "condition_name": condition.name,
+        },
     )
     executor = ActionExecutor(audio=audio, dialogue=DialogueManager(),
-                              log=session, muted=args.mute)
+                              log=session, muted=args.mute, condition=condition)
 
     log = deque(maxlen=8)
     prev_t, fps = 0.0, 0.0
 
+    # systemd stops a service with SIGTERM. Without this the process dies
+    # mid-write and the session log has no session_end record, which the
+    # analysis treats as a truncated file.
+    stopping = {"now": False}
+
+    def _stop(signum, _frame):
+        stopping["now"] = True
+
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+
     if session:
         print(f"logging to {session.path}")
-    print("running — q quit, [ / ] speed, i ignition, k log a KSS rating 1-9")
+    print(f"condition {condition.id} — {condition.name}: {condition.description}")
+    print("running — q quit, [ / ] speed, i ignition, 1-9 log a KSS rating")
     try:
-        while True:
+        while not stopping["now"]:
             telemetry = src.read()
             actions = sm.update(telemetry)
             state = src.last_state
@@ -163,7 +195,7 @@ def main() -> None:
                 fps = 0.8 * fps + 0.2 / (state.t - prev_t)
             prev_t = state.t
 
-            frame = src.last_frame
+            frame = None if args.headless else src.last_frame
             if frame is not None:
                 frame = cv2.flip(frame, 1) if not args.video else frame
                 h, w = frame.shape[:2]
@@ -176,6 +208,9 @@ def main() -> None:
                 state.landmarks_drawn = True
                 draw(cv2, frame, state, sm, telemetry, log, fps)
                 cv2.imshow("AWAS - Phase 1", frame)
+
+            if args.headless:
+                continue
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
@@ -195,7 +230,8 @@ def main() -> None:
     finally:
         executor.close()
         src.close()
-        cv2.destroyAllWindows()
+        if not args.headless:
+            cv2.destroyAllWindows()
         if session:
             path = session.close(t=prev_t)
             print(f"session log: {path}  ({session.counts})")

@@ -16,6 +16,13 @@ Two documents, read in order:
 protocol, hardware, ethics, roadmap, risks. Section 1 lists everything that
 changed from the original project brief and why.
 
+**[`docs/03-pi-deployment.md`](docs/03-pi-deployment.md)** — Raspberry Pi
+setup, profiling and the mediapipe version problem that shapes the port.
+
+**[`docs/02-study-protocol.md`](docs/02-study-protocol.md)** — how to actually
+run the H1 study: safety and ethics, session runbook, consent materials, and a
+pre-registered analysis plan.
+
 **[`docs/01-architecture-v3.md`](docs/01-architecture-v3.md)** — the current
 architecture, superseding §3-5 of the master plan. A five-tier learned ML stack
 in place of threshold detection, plus per-driver personalization, voice-channel
@@ -41,6 +48,12 @@ Milestone 1 — laptop webcam demo, end to end:
       case against the 300 ms budget**
 - [x] Session logging, with an analysis script that computes H1's primary
       outcome from it (214 tests)
+- [x] Experimental conditions A/B/C/D wired end to end, so the same
+      perception can drive different responses for a fair comparison
+- [x] Raspberry Pi port — setup script, systemd service, headless mode,
+      device profiler, Piper TTS (written, not yet run on hardware)
+- [ ] Run the pilot study (see `docs/02-study-protocol.md`)
+- [ ] Verify on actual Pi hardware, starting with the landmark indices
 - [ ] Local LLM for dialogue variation (Milestone 4)
 - [ ] Fusion core with hysteresis
 - [ ] Reflex alert path, latency-measured
@@ -67,6 +80,14 @@ After a session, see what it bought you:
 
 ```bash
 python -m scripts.analyze_session data/sessions/*.jsonl
+python -m scripts.analyze_session --compare data/sessions/*.jsonl   # by condition
+```
+
+Run a study session under a specific condition:
+
+```bash
+python -m scripts.run_webcam --conditions          # list them
+python -m scripts.run_webcam --driver P03 --condition B
 ```
 
 The live camera path needs a face landmark model — mediapipe ships none:
@@ -141,6 +162,7 @@ awas/
   speech/      TTS out, STT in
   runtime/     main loop, logging
 training/      T1 model training, baselines, ONNX export
+deploy/        systemd unit for running on a Pi
 design/        stage-by-stage UI mockups (.dc.html artboards)
 docs/          the plan
 config/        tunable thresholds

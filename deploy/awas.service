@@ -1,0 +1,45 @@
+# AWAS as a boot service on a Raspberry Pi.
+#
+#   sudo cp deploy/awas.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now awas
+#   journalctl -u awas -f
+#
+# Edit User= and the paths if the checkout is not at /home/pi/awas.
+
+[Unit]
+Description=AWAS driver alertness monitor
+After=multi-user.target sound.target
+Wants=sound.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/awas
+
+# Headless: no display for the debug overlay. The system still perceives,
+# decides, speaks and logs — the window is a development convenience, not a
+# component. Drop --headless if a screen is attached.
+ExecStart=/home/pi/awas/venv/bin/python -m scripts.run_webcam \
+    --driver default --condition C --headless
+
+# A safety system that dies silently is worse than one that never started.
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Audio needs the user's session bus for PipeWire/PulseAudio.
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=PYTHONUNBUFFERED=1
+
+StandardOutput=journal
+StandardError=journal
+
+# Modest hardening. Not a sandbox — the process needs the camera, the audio
+# device, and its own working directory.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

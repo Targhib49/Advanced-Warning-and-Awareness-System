@@ -337,3 +337,95 @@ class TestTimeToRelapse:
 
     def test_a_session_with_no_interventions_is_empty_not_an_error(self):
         assert time_to_relapse([sample_rec(t, 0) for t in range(10)]) == []
+
+
+# ---------------- experimental conditions (plan §6.3) ----------------
+
+from awas.companion.dialogue import TONE_CLIP  # noqa: E402
+from awas.runtime.conditions import CONDITIONS, get  # noqa: E402
+
+
+def run_under(condition_id, actions, audio=None):
+    audio = audio or FakeAudio()
+    ex = ActionExecutor(audio=audio, condition=get(condition_id))
+    return ex.execute(actions, t=1.0), audio
+
+
+class TestConditions:
+    def test_all_four_conditions_exist(self):
+        assert set(CONDITIONS) == {"A", "B", "C", "D"}
+
+    def test_lookup_is_case_insensitive(self):
+        assert get("c").id == "C"
+
+    def test_unknown_condition_fails_loudly(self):
+        with pytest.raises(SystemExit, match="Unknown condition"):
+            get("Z")
+
+    def test_a_is_silent(self):
+        """The no-intervention control: detects, logs, never responds."""
+        res, audio = run_under("A", [alert("critical_drowsy", 4), speak()])
+        assert audio.played == []
+        assert all(not r.performed for r in res)
+
+    def test_a_still_records_what_it_would_have_done(self):
+        """Otherwise the control is an empty log and useless as a comparison."""
+        res, _ = run_under("A", [alert("critical_drowsy", 4)])
+        assert "condition A" in res[0].suppressed
+        assert res[0].action.alert_id == "critical_drowsy"
+
+    def test_b_plays_a_tone_with_no_words(self):
+        res, audio = run_under("B", [alert("critical_drowsy", 4)])
+        assert audio.played == [[TONE_CLIP]]
+        assert res[0].performed
+
+    def test_b_gives_a_tone_even_to_alerts_that_normally_lack_one(self):
+        """A crippled baseline would make H1 trivially true and worthless."""
+        _, audio = run_under("B", [alert("phone_in_hand", 2)])
+        assert audio.played == [[TONE_CLIP]]
+
+    def test_b_holds_no_conversation(self):
+        res, _ = run_under("B", [speak(Intent.ENGAGE, 2)])
+        assert not res[0].performed
+        assert "no dialogue" in res[0].suppressed
+
+    def test_c_does_everything(self):
+        # Zero duration so the urgency guard stays out of the way — this test
+        # is about what the CONDITION permits, not about interruption.
+        res, audio = run_under("C", [alert("critical_drowsy", 4), speak()],
+                               audio=FakeAudio(duration_ms=0))
+        assert all(r.performed for r in res)
+        assert audio.played[0] == [TONE_CLIP, "alert__critical_drowsy"]
+
+    def test_d_matches_c_at_the_executor(self):
+        """D differs by gating, which lives in the state machine, not here."""
+        c_res, _ = run_under("C", [alert("critical_drowsy", 4), speak()],
+                             audio=FakeAudio(duration_ms=0))
+        d_res, _ = run_under("D", [alert("critical_drowsy", 4), speak()],
+                             audio=FakeAudio(duration_ms=0))
+        assert [r.performed for r in c_res] == [r.performed for r in d_res]
+
+    def test_gating_flag_differentiates_c_from_d(self):
+        assert get("C").gating is True
+        assert get("D").gating is False
+
+    def test_perception_is_identical_across_conditions(self):
+        """Same decisions in, different responses out — that is the whole point.
+
+        If a condition changed what the state machine decided, any difference
+        in outcome would be confounded by a difference in detection.
+        """
+        actions = [alert("critical_drowsy", 4), speak(Intent.ENGAGE, 2)]
+        seen = {}
+        for cid in "ABCD":
+            res, _ = run_under(cid, list(actions))
+            seen[cid] = [(r.action.type, r.action.urgency) for r in res]
+        assert len(set(map(tuple, seen.values()))) == 1
+
+    def test_condition_default_is_the_full_system(self):
+        ex = ActionExecutor(audio=FakeAudio())
+        assert ex.condition.id == "C"
+
+    def test_silent_property(self):
+        assert get("A").silent is True
+        assert all(not get(c).silent for c in "BCD")

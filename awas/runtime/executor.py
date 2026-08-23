@@ -20,9 +20,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
-from awas.companion.dialogue import DialogueManager
+from awas.companion.dialogue import TONE_CLIP, DialogueManager
 from awas.companion.phrasebank import text_for
 from awas.core.actions import Action, ActionType
+from awas.runtime.conditions import CONDITIONS, DEFAULT, Condition
 from awas.speech.audio import AudioOut, NullAudioOut, Playback
 
 
@@ -48,11 +49,13 @@ class ActionExecutor:
         dialogue: Optional[DialogueManager] = None,
         log: Any = None,
         muted: bool = False,
+        condition: Optional[Condition] = None,
     ):
         self.audio = audio or NullAudioOut()
         self.dialogue = dialogue or DialogueManager()
         self.log = log
         self.muted = muted
+        self.condition = condition or CONDITIONS[DEFAULT]
 
         self._busy_until = 0.0
         self._busy_urgency = -1
@@ -79,10 +82,18 @@ class ActionExecutor:
             return ex
 
         clips = self.dialogue.clips_for(action)
+        if action.type is ActionType.ALERT and not self.condition.speech:
+            # Condition B: a bare tone, which is what a conventional system
+            # gives you. Keep the tone even for alerts that normally lack one,
+            # so the baseline is audible rather than crippled.
+            clips = [TONE_CLIP]
         text = " ".join(text_for(c) for c in clips if text_for(c)).strip()
         ex = Executed(action=action, clips=clips, text=text)
 
-        if not clips:
+        blocked = self._blocked_by_condition(action)
+        if blocked:
+            ex.suppressed = blocked
+        elif not clips:
             ex.suppressed = "no clip for this action"
         elif self.muted:
             ex.suppressed = "muted"
@@ -100,6 +111,20 @@ class ActionExecutor:
         self._record(ex, t, telemetry, driving_state)
         self.history.append(ex)
         return ex
+
+    def _blocked_by_condition(self, action: Action) -> str:
+        """Whether the experimental condition forbids this response.
+
+        Reported as a suppression rather than silently skipped, so a condition-A
+        session still records every intervention the system WOULD have made.
+        That is what makes A a usable control instead of an empty log.
+        """
+        c = self.condition
+        if action.type is ActionType.ALERT and not c.reflex:
+            return f"condition {c.id}: no reflex alerts"
+        if action.type is ActionType.SPEAK and not c.dialogue:
+            return f"condition {c.id}: no dialogue"
+        return ""
 
     def _would_interrupt_something_louder(self, action: Action) -> bool:
         if time.monotonic() >= self._busy_until:
