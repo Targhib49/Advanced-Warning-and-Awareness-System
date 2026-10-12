@@ -96,6 +96,9 @@ class SimRoadSource:
         self._used_seq = 0
         self._peers: dict = {}
         self.counts = {"telemetry": 0, "frames": 0, "rejected": 0}
+        # Set by the owner (the demo's [ / ] keys) so a bench run with no game
+        # connected still has a speed — reported as "manual", never as "sim".
+        self.manual_speed_kmh: Optional[float] = None
         self.lane_seen = 0
         self.lane_tried = 0
 
@@ -179,7 +182,10 @@ class SimRoadSource:
             frame, seq = self._frame, self._frame_seq
 
         if tel is None or time.monotonic() - at >= self.cfg.stale_after_sec:
-            # No live game: say nothing, rather than replay a frozen speed.
+            # No live game: never replay a frozen speed. Fall back to the
+            # manual demo speed if there is one, labelled as such.
+            if self.manual_speed_kmh is not None:
+                return RoadState(t=t, speed_kmh=self.manual_speed_kmh, speed_source="manual")
             return RoadState(t=t, speed_kmh=0.0, speed_source="none")
 
         speed = 0.0 if tel.paused else tel.speed_kmh

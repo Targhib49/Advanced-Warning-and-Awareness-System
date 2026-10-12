@@ -1,43 +1,51 @@
-# AWAS as a boot service on a Raspberry Pi.
+# AWAS as a boot service on a Raspberry Pi. A template: install it with
 #
-#   sudo cp deploy/awas.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now awas
-#   journalctl -u awas -f
+#   ./deploy/install_service.sh
 #
-# Edit User= and the paths if the checkout is not at /home/pi/awas.
+# which fills in @USER@, @UID@ and @ROOT@ for whoever runs it, rather than
+# assuming a `pi` user that new Pi OS images no longer create.
+#
+#   journalctl -u awas -f                 # watch it
+#   sudoedit /etc/default/awas            # change what it runs, then:
+#   sudo systemctl restart awas
 
 [Unit]
 Description=AWAS driver alertness monitor
-After=multi-user.target sound.target
-Wants=sound.target
+After=network-online.target sound.target
+Wants=network-online.target sound.target
+# A safety system that dies silently is worse than one that never started,
+# so never give up restarting it.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/awas
+User=@USER@
+Group=@USER@
+SupplementaryGroups=video audio
+WorkingDirectory=@ROOT@
 
-# Headless: no display for the debug overlay. The system still perceives,
-# decides, speaks and logs — the window is a development convenience, not a
-# component. Drop --headless if a screen is attached.
-ExecStart=/home/pi/awas/venv/bin/python -m scripts.run_webcam \
-    --driver default --condition C --headless
+# What to run lives in /etc/default/awas, so switching between a bench run and
+# a simulator session is an edit and a restart, not a reinstall.
+EnvironmentFile=-/etc/default/awas
+ExecStart=@ROOT@/venv/bin/python -m scripts.run_webcam $AWAS_ARGS
 
-# A safety system that dies silently is worse than one that never started.
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=0
 
-# Audio needs the user's session bus for PipeWire/PulseAudio.
-Environment=XDG_RUNTIME_DIR=/run/user/1000
+# run_webcam closes the session log on SIGTERM, so a stop is never a
+# truncated file. Give it time to do that.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Audio needs the user's session bus for PipeWire.
+Environment=XDG_RUNTIME_DIR=/run/user/@UID@
 Environment=PYTHONUNBUFFERED=1
 
 StandardOutput=journal
 StandardError=journal
 
 # Modest hardening. Not a sandbox — the process needs the camera, the audio
-# device, and its own working directory.
+# device, the network for the dashboard and simulator, and its own directory.
 NoNewPrivileges=true
 PrivateTmp=true
 

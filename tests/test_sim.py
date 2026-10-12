@@ -37,6 +37,14 @@ def test_nothing_received_means_nothing_known(sim):
     assert sim.ignition_on is None and not sim.connected
 
 
+def test_bench_run_without_a_game_uses_the_manual_speed(sim):
+    sim.manual_speed_kmh = 60.0
+    state = sim.read(1.0)
+    assert state.speed_kmh == 60.0 and state.speed_source == "manual"
+    sim.handle(tel(speed_kmh=80.0))                        # a game connects: it wins
+    assert sim.read(1.1).speed_source == "sim"
+
+
 def test_telemetry_becomes_speed_steering_and_ignition(sim):
     assert sim.handle(tel(speed_kmh=-72.0, steer=0.5, engine_on=False))
     state = sim.read(1.0)

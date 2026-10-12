@@ -1,0 +1,12 @@
+# Arguments for the AWAS boot service (installed as /etc/default/awas).
+# Edit, then: sudo systemctl restart awas
+#
+#   --headless         no debug window; the dashboard is the screen
+#   --dashboard 8095   centre-screen app at http://awas.local:8095
+#   --sim              speed, steering and lane from the ETS2 bridge (UDP 8097)
+#   --mute             decide and log, but stay silent
+#   --condition A-D    experimental condition (see --conditions)
+#
+# While no simulator is connected the speed is the manual demo speed, changed
+# with [ and ] on the dashboard page; a connected ETS2 bridge takes over.
+AWAS_ARGS="--driver default --condition C --headless --dashboard 8095 --sim"

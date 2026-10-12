@@ -117,8 +117,9 @@ cat <<'DONE'
   2. Run it:
          ./venv/bin/python -m scripts.run_webcam --driver <name>
 
-  3. Install as a service, if it should start on boot:
-         sudo cp deploy/awas.service /etc/systemd/system/
-         sudo systemctl daemon-reload && sudo systemctl enable --now awas
+  3. Install as a service, if it should start on boot (with the dashboard
+     full screen on the desktop):
+         ./deploy/install_service.sh
+     Change what it runs in /etc/default/awas, then: sudo systemctl restart awas
 
 DONE

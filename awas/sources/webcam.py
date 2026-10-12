@@ -100,6 +100,8 @@ class WebcamSource(Source):
 
         if isinstance(self.road_source, NullRoadSource):
             self.road_source.speed_kmh = self.speed_kmh
+        elif hasattr(self.road_source, "manual_speed_kmh"):
+            self.road_source.manual_speed_kmh = self.speed_kmh   # used only with no simulator
         road = self.road_source.read(t)
         self.lane.add(road)
         lane_stats = self.lane.stats()
