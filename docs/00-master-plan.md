@@ -203,7 +203,7 @@ decision. Everything else is cut.
 |---|---|---|
 | Speed | OBD-II, GPS fallback | Whether the vehicle is moving at all; risk scaling |
 | Vehicle stopped duration | derived | Traffic-jam vs. light vs. parked state |
-| Lane position + SDLP | forward camera, lane detection | **Drowsiness evidence** (see §4.3) — the key addition |
+| Lane position + SDLP | forward camera, lane detection | **Drowsiness evidence** (see §4.3) — the key addition. Built: `awas/road/lane_detect.py`, ±2 cm on synthetic roads at 3 ms/frame; the trapezoid still needs calibrating against real footage |
 | Following distance | forward camera, monocular estimate | Workload; "traffic is moving" nudge |
 | Traffic light state | forward camera, colour + shape | Green-light-while-drowsy override |
 | Road class + speed limit | GPS + offline map | Workload estimate (highway vs. urban) |

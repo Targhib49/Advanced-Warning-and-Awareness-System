@@ -83,6 +83,11 @@ assets/phrases/manifest.json
 # tracked. Delete this line if you would rather version the built page.
 design/*-mockups.html
 
+# Figures are regenerated from artifacts by scripts/make_figures.py.
+# Delete this line if you would rather version them for a submission.
+figures/
+docs/build/
+
 # macOS app wrapper built by scripts/make_app.sh for camera permissions.
 *.app/
 

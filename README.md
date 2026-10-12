@@ -16,6 +16,10 @@ Two documents, read in order:
 protocol, hardware, ethics, roadmap, risks. Section 1 lists everything that
 changed from the original project brief and why.
 
+**[`docs/04-results-and-discussion.md`](docs/04-results-and-discussion.md)** —
+Section IV of the paper, in IEEE format: seven tables, the architectural
+findings, and the limitations stated plainly.
+
 **[`docs/03-pi-deployment.md`](docs/03-pi-deployment.md)** — Raspberry Pi
 setup, profiling and the mediapipe version problem that shapes the port.
 
@@ -54,6 +58,12 @@ Milestone 1 — laptop webcam demo, end to end:
       device profiler, Piper TTS (written, not yet run on hardware)
 - [ ] Run the pilot study (see `docs/02-study-protocol.md`)
 - [ ] Verify on actual Pi hardware, starting with the landmark indices
+- [x] Layer 2 road channel — lane statistics (SDLP), steering reversals,
+      workload estimation, and multimodal fusion (269 tests)
+- [x] Lane detection — classic CV, ±2 cm on synthetic roads, 3 ms/frame
+- [x] Automatic lane calibration from footage — vanishing point plus a
+      scored search, recovers a different camera mounting
+- [ ] Run it on real dashcam footage from the actual mounting
 - [ ] Local LLM for dialogue variation (Milestone 4)
 - [ ] Fusion core with hysteresis
 - [ ] Reflex alert path, latency-measured
@@ -73,6 +83,12 @@ pip install -r requirements.txt
 python -m scripts.render_phrases              # pre-render the phrase bank, once
 python -m scripts.demo_state_machine --speak  # scripted drive, out loud
 python -m scripts.demo_calibration            # why a fixed EAR threshold fails
+python -m scripts.demo_fusion                 # what the road channel changes
+python -m scripts.demo_lane                   # lane detection accuracy and SDLP
+python -m scripts.calibrate_lane --self-test  # prove the calibrator works
+python -m scripts.parameter_sweep             # sensitivity analysis
+python -m scripts.layer2_experiments          # road-awareness contribution
+./scripts/build_paper.sh                      # -> Section IV as .docx
 python -m pytest tests/ -q                    # test suite
 ```
 
@@ -81,6 +97,12 @@ After a session, see what it bought you:
 ```bash
 python -m scripts.analyze_session data/sessions/*.jsonl
 python -m scripts.analyze_session --compare data/sessions/*.jsonl   # by condition
+```
+
+Build the figures for a paper, poster or slides:
+
+```bash
+python -m scripts.make_figures      # -> figures/*.png (300dpi) and *.pdf
 ```
 
 Run a study session under a specific condition:
@@ -155,7 +177,8 @@ Kaggle path.
 awas/
   core/        telemetry, states, actions, config, state machine — pure logic
   driver/      Layer 1  driver state monitoring (camera)
-  road/        Layer 2  road & vehicle context
+  road/        Layer 2  lane statistics, steering, workload
+  fusion/      combining the facial and vehicle channels (H2)
   fusion/      fusion core: drowsiness level + confidence + workload
   companion/   Layer 3  dialogue manager, template bank, LLM
   sources/     sensor adapters (mock, webcam, OBD, GPS, simulator)

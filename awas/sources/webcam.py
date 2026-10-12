@@ -12,13 +12,16 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-from awas.core.telemetry import Distraction, Telemetry
+from awas.core.telemetry import Telemetry
 from awas.driver.landmarks import (
     DEFAULT_MODEL_NAME,
     Landmarker,
     MediaPipeLandmarker,
 )
 from awas.driver.pipeline import DriverPipeline, DriverState
+from awas.fusion.telemetry import build_telemetry, fuse_channels
+from awas.road.signals import LaneTracker, NullRoadSource, RoadSource
+from awas.road.workload import WorkloadEstimator
 from awas.sources.base import Source
 
 
@@ -44,6 +47,7 @@ class WebcamSource(Source):
         profile_dir: Optional[Path] = None,
         model_path: Optional[Path] = None,
         landmarker: Optional[Landmarker] = None,
+        road: Optional[RoadSource] = None,
         width: int = 640,
         height: int = 480,
     ):
@@ -64,11 +68,20 @@ class WebcamSource(Source):
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
+        # The road channel. NullRoadSource is the honest Phase 1 default: speed
+        # comes from wherever the caller sets it and nothing else is known.
+        self.road_source = road or NullRoadSource()
+        self.lane = LaneTracker()
+        self.workload_est = WorkloadEstimator()
+
         self.t0 = time.monotonic()
         self.speed_kmh = 60.0        # driven by the demo's keyboard controls
         self.ignition_on = True
         self.last_state: Optional[DriverState] = None
         self.last_frame = None
+        self.last_road = None
+        self.last_workload = None
+        self.last_fused = None
 
     def read(self) -> Telemetry:
         import cv2
@@ -84,7 +97,22 @@ class WebcamSource(Source):
             state = self.pipeline.process(self.landmarker.observe(rgb, t), t)
 
         self.last_state = state
-        return to_telemetry(state, self.speed_kmh, self.ignition_on)
+
+        if isinstance(self.road_source, NullRoadSource):
+            self.road_source.speed_kmh = self.speed_kmh
+        road = self.road_source.read(t)
+        self.lane.add(road)
+        lane_stats = self.lane.stats()
+        workload = self.workload_est.update(road)
+
+        self.last_road = road
+        self.last_workload = workload
+        self.last_fused = fuse_channels(state, lane_stats)
+
+        return build_telemetry(
+            driver=state, road=road, lane=lane_stats, workload=workload,
+            ignition_on=self.ignition_on, fused=self.last_fused,
+        )
 
     def close(self) -> None:
         try:
@@ -102,22 +130,14 @@ def _no_face(t: float):
 
 
 def to_telemetry(state: DriverState, speed_kmh: float, ignition_on: bool) -> Telemetry:
-    """Map driver state onto the snapshot the state machine reads."""
-    return Telemetry(
-        timestamp=state.t,
-        drowsiness_level=state.drowsiness_level,
-        confidence=state.confidence,
-        workload=0.0,               # needs the road channel — Phase 2
-        distraction=Distraction.NONE,
-        perclos=state.perclos,
-        microsleep_count=state.microsleep_count,
-        blink_duration_mean_ms=state.blink_duration_mean_ms,
-        face_present=state.face_present,
-        eye_aspect_ratio=state.eye_aspect_ratio,
-        head_pitch_deg=state.head_pitch_deg,
-        head_yaw_deg=state.head_yaw_deg,
-        speed_kmh=speed_kmh,
-        speed_source="manual",
-        parking_brake=None,         # no OBD-II in Phase 1
-        ignition_on=ignition_on,
+    """Facial-channel-only telemetry — condition E, and the Phase 1 default.
+
+    Kept because it is exactly the ablation H2 compares against: the same
+    driver state with no vehicle channel to corroborate or contradict it.
+    """
+    from awas.road.signals import RoadState
+    return build_telemetry(
+        driver=state,
+        road=RoadState(t=state.t, speed_kmh=speed_kmh, speed_source="manual"),
+        lane=None, workload=None, ignition_on=ignition_on,
     )
