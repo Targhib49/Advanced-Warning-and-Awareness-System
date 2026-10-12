@@ -109,6 +109,29 @@ class TestServer:
         assert server.next_command() == {"kss": 6}
         assert server.next_command() is None
 
+    def test_camera_view_does_not_exist_unless_asked_for(self, server):
+        server.publish_frame(b"\xff\xd8 a frame")              # dropped: view is off
+        for path in ("/camera", "/camera.mjpg"):
+            with pytest.raises(urllib.error.HTTPError) as err:
+                urllib.request.urlopen(self._url(server, path))
+            assert err.value.code == 404
+
+    def test_camera_view_streams_when_enabled(self):
+        s = DisplayServer(port=0, host="127.0.0.1", camera_view=True).start()
+        try:
+            s.publish_frame(b"\xff\xd8 frame one")
+            base = f"http://127.0.0.1:{s.port}"
+            assert b"/camera.mjpg" in urllib.request.urlopen(base + "/camera").read()
+            stream = urllib.request.urlopen(base + "/camera.mjpg", timeout=3)
+            assert "multipart/x-mixed-replace" in stream.headers["Content-Type"]
+            chunk = stream.read1(4096) if hasattr(stream, "read1") else stream.read(200)
+            while b"frame one" not in chunk:
+                chunk += stream.read1(4096)
+            assert b"--frame" in chunk
+            stream.close()
+        finally:
+            s.close()
+
     def test_rejects_anything_else(self, server):
         req = urllib.request.Request(self._url(server, "/command"), data=b'{"shutdown": true}')
         with pytest.raises(urllib.error.HTTPError) as err:

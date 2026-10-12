@@ -86,6 +86,25 @@ def draw(cv2, frame, state, sm, telemetry, log, fps):
         put(line, 14, y2 + 44 + i * 16, 0.4, DIM)
 
 
+CAMERA_VIEW_FPS = 10.0
+
+
+def overlay_frame(cv2, raw, state, sm, telemetry, log, fps, mirror=True):
+    """The debug view: the camera, the 12 EAR points, and the readout panel.
+    Draws on a copy; the source frame is left alone."""
+    frame = cv2.flip(raw, 1) if mirror else raw.copy()
+    h, w = frame.shape[:2]
+    if state.face_present and state.landmarks:
+        for idx in list(MEDIAPIPE_LEFT_EYE) + list(MEDIAPIPE_RIGHT_EYE):
+            x, y = state.landmarks[idx]
+            if mirror:
+                x = w - x
+            cv2.circle(frame, (int(x), int(y)), 2, LEVEL_COLORS[min(state.drowsiness_level, 4)], -1)
+    state.landmarks_drawn = True
+    draw(cv2, frame, state, sm, telemetry, log, fps)
+    return frame
+
+
 def _apply_commands(display, src, session, t, log, kss_given):
     """Drain what the screen sent. Speed and ignition stand in for GPS and the
     ignition line until the vehicle signals exist; a KSS tap is ground truth."""
@@ -125,6 +144,10 @@ def main() -> None:
                     help="no window — for a Pi running as a boot service")
     ap.add_argument("--dashboard", type=int, default=0, metavar="PORT",
                     help="serve the centre-screen app on this port (e.g. 8095); 0 = off")
+    ap.add_argument("--camera-view", action="store_true",
+                    help="with --dashboard, also serve the live camera and eye points at /camera. "
+                         "For demos only: driver images leave the device, against plan §8, "
+                         "so use it only with the consent of whoever is on camera")
     ap.add_argument("--sim", type=int, nargs="?", const=8097, default=0, metavar="PORT",
                     help="take speed, steering and lane from the ETS2 bridge (UDP, default 8097)")
     ap.add_argument("--sim-lane-cal", default="config/lane_calibration_sim.json",
@@ -195,12 +218,13 @@ def main() -> None:
     display = trip = None
     held = {"reason": None, "t": -1e9}
     kss_given = None
-    sim_noted = -1e9
+    sim_noted = streamed_at = -1e9
     if args.dashboard:
         from awas.display.server import DisplayServer
-        display = DisplayServer(args.dashboard).start()
+        display = DisplayServer(args.dashboard, camera_view=args.camera_view).start()
         trip = TripTracker()
-        print(f"dashboard on http://0.0.0.0:{display.port}")
+        print(f"dashboard on http://0.0.0.0:{display.port}"
+              + ("  (camera view at /camera — driver images leave the device)" if args.camera_view else ""))
 
     # systemd stops a service with SIGTERM. Without this the process dies
     # mid-write and the session log has no session_end record, which the
@@ -266,19 +290,19 @@ def main() -> None:
                 fps = 0.8 * fps + 0.2 / (state.t - prev_t)
             prev_t = state.t
 
-            frame = None if args.headless else src.last_frame
-            if frame is not None:
-                frame = cv2.flip(frame, 1) if not args.video else frame
-                h, w = frame.shape[:2]
-                if state.face_present and state.landmarks:
-                    for idx in list(MEDIAPIPE_LEFT_EYE) + list(MEDIAPIPE_RIGHT_EYE):
-                        x, y = state.landmarks[idx]
-                        if not args.video:
-                            x = w - x
-                        cv2.circle(frame, (int(x), int(y)), 2, LEVEL_COLORS[min(state.drowsiness_level, 4)], -1)
-                state.landmarks_drawn = True
-                draw(cv2, frame, state, sm, telemetry, log, fps)
-                cv2.imshow("AWAS - Phase 1", frame)
+            want_window = not args.headless
+            want_stream = (display is not None and args.camera_view
+                           and telemetry.timestamp - streamed_at >= 1.0 / CAMERA_VIEW_FPS)
+            if (want_window or want_stream) and src.last_frame is not None:
+                frame = overlay_frame(cv2, src.last_frame, state, sm, telemetry, log, fps,
+                                      mirror=not args.video)
+                if want_window:
+                    cv2.imshow("AWAS - Phase 1", frame)
+                if want_stream:
+                    streamed_at = telemetry.timestamp
+                    ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                    if ok:
+                        display.publish_frame(jpg.tobytes())
 
             if args.headless:
                 continue
