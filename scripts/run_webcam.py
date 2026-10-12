@@ -19,8 +19,10 @@ from collections import deque
 from pathlib import Path
 
 from awas.companion.dialogue import DialogueManager
+from awas.core.actions import ActionType
 from awas.core.machine import StateMachine
 from awas.core.states import DrivingState
+from awas.display.model import TripTracker, is_display_worthy, snapshot
 from awas.driver.ear import MEDIAPIPE_LEFT_EYE, MEDIAPIPE_RIGHT_EYE
 from awas.runtime.conditions import describe_all, get as get_condition
 from awas.runtime.executor import ActionExecutor
@@ -84,6 +86,26 @@ def draw(cv2, frame, state, sm, telemetry, log, fps):
         put(line, 14, y2 + 44 + i * 16, 0.4, DIM)
 
 
+def _apply_commands(display, src, session, t, log, kss_given):
+    """Drain what the screen sent. Speed and ignition stand in for GPS and the
+    ignition line until the vehicle signals exist; a KSS tap is ground truth."""
+    while (cmd := display.next_command()) is not None:
+        if "speed_delta" in cmd:
+            src.speed_kmh = max(0.0, src.speed_kmh + float(cmd["speed_delta"]))
+        if "ignition" in cmd:
+            src.ignition_on = not src.ignition_on
+            if src.ignition_on:
+                kss_given = None          # a new trip asks again
+        if "kss" in cmd:
+            k = int(cmd["kss"])
+            if 1 <= k <= 9:
+                kss_given = k
+                if session:
+                    session.annotation(t, kind="kss", value=k)
+                log.append(f"t={t:6.1f} kss   {k} (screen)")
+    return kss_given
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="AWAS Phase 1 webcam demo.")
     ap.add_argument("--driver", default="default")
@@ -101,6 +123,12 @@ def main() -> None:
     ap.add_argument("--no-log", action="store_true")
     ap.add_argument("--headless", action="store_true",
                     help="no window — for a Pi running as a boot service")
+    ap.add_argument("--dashboard", type=int, default=0, metavar="PORT",
+                    help="serve the centre-screen app on this port (e.g. 8095); 0 = off")
+    ap.add_argument("--sim", type=int, nargs="?", const=8097, default=0, metavar="PORT",
+                    help="take speed, steering and lane from the ETS2 bridge (UDP, default 8097)")
+    ap.add_argument("--sim-lane-cal", default="config/lane_calibration_sim.json",
+                    help="lane calibration for the simulator's view")
     args = ap.parse_args()
 
     if args.conditions:
@@ -122,11 +150,21 @@ def main() -> None:
             f"    python -m scripts.demo_state_machine"
         )
 
+    road = None
+    if args.sim:
+        from awas.road.calibrate import load as load_lane_calibration
+        from awas.road.sim import SimConfig, SimRoadSource
+        lane_cal = load_lane_calibration(Path(args.sim_lane_cal))
+        road = SimRoadSource(SimConfig(port=args.sim), calibration=lane_cal)
+        print(f"simulator input on UDP {args.sim}"
+              + ("" if lane_cal else f" (no {args.sim_lane_cal}: lane geometry is the built-in guess)"))
+
     src = WebcamSource(
         camera_index=args.video if args.video else args.camera,
         driver_name=args.driver,
         profile_dir=Path(args.profiles),
         model_path=model,
+        road=road,
     )
     sm = StateMachine(initial_state=DrivingState.MOVING)
 
@@ -152,6 +190,17 @@ def main() -> None:
 
     log = deque(maxlen=8)
     prev_t, fps = 0.0, 0.0
+
+    # The centre screen is a view of decisions already made; it can be absent.
+    display = trip = None
+    held = {"reason": None, "t": -1e9}
+    kss_given = None
+    sim_noted = -1e9
+    if args.dashboard:
+        from awas.display.server import DisplayServer
+        display = DisplayServer(args.dashboard).start()
+        trip = TripTracker()
+        print(f"dashboard on http://0.0.0.0:{display.port}")
 
     # systemd stops a service with SIGTERM. Without this the process dies
     # mid-write and the session log has no session_end record, which the
@@ -187,9 +236,31 @@ def main() -> None:
                 line = f"t={telemetry.timestamp:6.1f} {ex_.action.type.value:5} {detail}"
                 log.append(line)
                 print(" ", line)
+                if display:
+                    if is_display_worthy(ex_.suppressed):
+                        held = {"reason": ex_.suppressed, "t": telemetry.timestamp}
+                    elif ex_.action.type in (ActionType.ALERT, ActionType.SPEAK):
+                        trip.note_alert()
 
             if session:
                 session.sample(telemetry.timestamp, state, telemetry)
+
+            if display:
+                kss_given = _apply_commands(display, src, session, telemetry.timestamp, log, kss_given)
+                level = sm.effective_level(telemetry)
+                trip.update(telemetry.timestamp, level, telemetry.speed_kmh,
+                            moving=sm.state in (DrivingState.MOVING, DrivingState.TRAFFIC_JAM))
+                display.publish(snapshot(
+                    driving_state=sm.state, level=level, driver=state,
+                    speed_kmh=telemetry.speed_kmh, workload=telemetry.workload,
+                    lane_available=telemetry.sdlp is not None,
+                    held_reason=held["reason"] if telemetry.timestamp - held["t"] < 15 else None,
+                    trip=trip, kss=kss_given,
+                ))
+
+            if road is not None and telemetry.timestamp - sim_noted >= 10.0:
+                sim_noted = telemetry.timestamp
+                print("  sim  ", road.status())
 
             if state.t > prev_t:
                 fps = 0.8 * fps + 0.2 / (state.t - prev_t)
@@ -228,6 +299,8 @@ def main() -> None:
                                    value=key - ord("0"))
                 log.append(f"t={telemetry.timestamp:6.1f} kss   {key - ord('0')}")
     finally:
+        if display:
+            display.close()
         executor.close()
         src.close()
         if not args.headless:

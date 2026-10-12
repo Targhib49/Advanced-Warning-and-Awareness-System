@@ -109,9 +109,13 @@ class WebcamSource(Source):
         self.last_workload = workload
         self.last_fused = fuse_channels(state, lane_stats)
 
+        # A road source that knows the engine (a simulator, later OBD-II) wins
+        # over the demo's manual ignition key.
+        ignition = getattr(self.road_source, "ignition_on", None)
         return build_telemetry(
             driver=state, road=road, lane=lane_stats, workload=workload,
-            ignition_on=self.ignition_on, fused=self.last_fused,
+            ignition_on=self.ignition_on if ignition is None else ignition,
+            fused=self.last_fused,
         )
 
     def close(self) -> None:
@@ -119,6 +123,7 @@ class WebcamSource(Source):
             self.pipeline.save_profile()
         finally:
             self.landmarker.close()
+            self.road_source.close()
             if self.cap is not None:
                 self.cap.release()
                 self.cap = None

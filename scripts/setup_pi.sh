@@ -30,18 +30,42 @@ say "system packages"
 sudo apt-get update -qq
 # libportaudio2  -> sounddevice
 # libgl1, libglib -> opencv
-# libatlas-base-dev -> numpy BLAS
+# No BLAS package: numpy's aarch64 wheels bundle OpenBLAS, and
+# libatlas-base-dev no longer exists from Trixie on.
+# Trixie renamed libglib2.0-0 to libglib2.0-0t64 (the 64-bit time_t transition).
+GLIB=libglib2.0-0
+apt-cache show libglib2.0-0t64 >/dev/null 2>&1 && GLIB=libglib2.0-0t64
 sudo apt-get install -y -qq \
   python3-venv python3-dev \
-  libportaudio2 libatlas-base-dev \
-  libgl1 libglib2.0-0 \
+  libportaudio2 \
+  libgl1 "$GLIB" \
   git curl
 
 # ---------------------------------------------------------------- python
 say "python environment"
-if [ ! -d venv ]; then
-  python3 -m venv venv
+# mediapipe 0.10.18 publishes aarch64 wheels for CPython 3.9-3.12 only, and
+# Trixie ships 3.13. On a newer system Python, build the venv on a 3.12 that
+# uv fetches instead, leaving the system interpreter alone.
+py_ok() { "$1" -c 'import sys; sys.exit(not (3, 9) <= sys.version_info[:2] <= (3, 12))' 2>/dev/null; }
+if [ -d venv ] && ! py_ok ./venv/bin/python; then
+  warn "existing venv is on $(./venv/bin/python -V 2>&1), which mediapipe 0.10.18 cannot use; rebuilding"
+  rm -rf venv
 fi
+if [ ! -d venv ]; then
+  if py_ok python3; then
+    python3 -m venv venv
+  else
+    echo "    system $(python3 -V) is too new for mediapipe 0.10.18; using Python 3.12 from uv"
+    export PATH="$HOME/.local/bin:$PATH"
+    if ! command -v uv >/dev/null 2>&1; then
+      sudo apt-get install -y -qq pipx
+      pipx install uv
+    fi
+    uv python install 3.12
+    uv venv --python 3.12 --seed venv
+  fi
+fi
+echo "    venv python: $(./venv/bin/python -V)"
 ./venv/bin/pip install -q --upgrade pip
 ./venv/bin/pip install -q -r requirements-pi.txt
 echo "    mediapipe: $(./venv/bin/python -c 'import mediapipe as m; print(m.__version__)' 2>/dev/null || echo FAILED)"

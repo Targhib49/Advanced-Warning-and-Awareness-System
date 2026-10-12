@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="id" translate="no">
+<head>
+<meta charset="utf-8">
+<!-- A translation bar over a safety display is a distraction, not a feature. -->
+<meta name="google" content="notranslate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AWAS</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&family=Barlow+Semi+Condensed:wght@700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; touch-action: manipulation; }
+  #help { position: fixed; left: 12px; bottom: 10px; color: #8E9BA1; font: 13px ui-monospace, monospace;
+          background: rgba(0,0,0,.7); padding: 6px 10px; border-radius: 6px; display: none; }
+</style>
+</head>
+<body>
+<canvas id="screen"></canvas>
+<div id="help">[ ] speed &nbsp; i ignition / park &nbsp; 1-9 KSS (parked) &nbsp; l language &nbsp; f full screen &nbsp; ? hide</div>
+<script type="module">
+import { drawScreen, kssButtonAt, TEXT, W, H } from "/app-screens.js";
+
+const canvas = document.getElementById("screen");
+const ctx = canvas.getContext("2d");
+const params = new URLSearchParams(location.search);
+let lang = params.get("lang") === "en" ? "en" : "id";
+let snap = null, lastOk = 0, scale = 1;
+
+// Strings the live app adds on top of the design's own TEXT table.
+const L10N = {
+  id: {
+    kmh: v => `${v} km/jam`,
+    lane: ok => ok ? "lajur aman" : "lajur —",
+    work: w => w == null ? "beban —" : `beban ${w.toFixed(2).replace(".", ",")}`,
+    km: v => `${String(v).replace(".", ",")} km`,
+    held: r => `Peringatan ditahan: ${r}.`,
+    critLine: n => n > 0 ? "Mikrotidur terdeteksi" : "Mata tertutup terlalu lama",
+    critSub: "Menepi di tempat aman sekarang.",
+    calib: p => `Mengemudi seperti biasa. Mempelajari mata Anda (${Math.round(p * 100)}%).`,
+    worst: "terparah", lost: "Tidak terhubung ke AWAS",
+  },
+  en: {
+    kmh: v => `${v} km/h`,
+    lane: ok => ok ? "lane ok" : "lane —",
+    work: w => w == null ? "workload —" : `workload ${w.toFixed(2)}`,
+    km: v => `${v} km`,
+    held: r => `Holding back: ${r}.`,
+    critLine: n => n > 0 ? "Microsleep detected" : "Eyes closed too long",
+    critSub: "Pull over somewhere safe now.",
+    calib: p => `Drive as usual. Learning your eyes (${Math.round(p * 100)}%).`,
+    worst: "worst", lost: "No connection to AWAS",
+  },
+};
+
+function liveFor(s) {
+  const X = L10N[lang], T = TEXT[lang];
+  const foot = [X.kmh(s.speed_kmh), X.lane(s.lane), X.work(s.workload)];
+  const live = { clock: s.clock, channel: s.lane ? undefined : T.faceOnly, text: { foot } };
+  switch (s.screen) {
+    case "critical":
+      live.text = { line: X.critLine(s.microsleeps), sub: X.critSub, foot: [X.kmh(s.speed_kmh)] };
+      break;
+    case "gate": {
+      // The gate holds the alert back; it does not change how drowsy you are.
+      const own = ["monitoring", "tired", "engaging", "insist"][Math.min(s.level, 3)];
+      Object.assign(live, { level: s.level });
+      Object.assign(live.text, { word: T[own].word, line: X.held(s.held_reason) });
+      break;
+    }
+    case "calibrating":
+      live.progress = s.calibration_progress;
+      live.text.line = X.calib(s.calibration_progress);
+      break;
+    case "parked": {
+      const tr = s.trip;
+      live.text = { stats: [[`${tr.driving_min}:${String(tr.driving_sec).padStart(2, "0")}`, T.parked.stats[0][1]],
+                            [X.km(tr.distance_km), T.parked.stats[1][1]],
+                            [String(tr.nudges), T.parked.stats[2][1]]],
+                    worst: X.worst };
+      Object.assign(live, { chart: tr.chart, worst: tr.worst, chartStart: tr.start, chartEnd: tr.end, kss: s.kss });
+      break;
+    }
+  }
+  return live;
+}
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  scale = Math.min(innerWidth / W, innerHeight / H);
+  canvas.style.width = `${W * scale}px`;
+  canvas.style.height = `${H * scale}px`;
+  canvas.width = Math.round(W * scale * dpr);
+  canvas.height = Math.round(H * scale * dpr);
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  render();
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  if (!snap || Date.now() - lastOk > 2500) {
+    // Losing the link is a degradation-ladder row, not a failure (plan §7.5).
+    ctx.fillStyle = "#0B0D0E"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#8E9BA1"; ctx.font = "500 28px 'IBM Plex Mono', monospace"; ctx.textAlign = "center";
+    ctx.fillText(L10N[lang].lost, W / 2, H / 2);
+    return;
+  }
+  drawScreen(ctx, snap.screen, lang, liveFor(snap));
+}
+
+let sized = "";
+async function poll() {
+  // A kiosk window can reach full screen without a resize event; check every tick.
+  const now = `${innerWidth}x${innerHeight}@${window.devicePixelRatio}`;
+  if (now !== sized) { sized = now; resize(); }
+  try {
+    const r = await fetch("/state", { cache: "no-store" });
+    if (r.ok) { const s = await r.json(); if (s.screen) { snap = s; lastOk = Date.now(); } }
+  } catch (_) { /* the device may be restarting */ }
+  render();
+}
+
+function send(cmd) {
+  fetch("/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cmd) });
+}
+
+canvas.addEventListener("click", e => {
+  if (snap?.screen !== "parked") return;
+  const r = canvas.getBoundingClientRect();
+  const k = kssButtonAt((e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
+  if (k) send({ kss: k });
+});
+
+addEventListener("keydown", e => {
+  const help = document.getElementById("help");
+  if (e.key === "[") send({ speed_delta: -10 });
+  else if (e.key === "]") send({ speed_delta: 10 });
+  else if (e.key === "i") send({ ignition: "toggle" });
+  else if (/^[1-9]$/.test(e.key) && snap?.screen === "parked") send({ kss: Number(e.key) });
+  else if (e.key === "l") { lang = lang === "id" ? "en" : "id"; render(); }
+  else if (e.key === "f") document.documentElement.requestFullscreen?.();
+  else if (e.key === "?") help.style.display = help.style.display === "block" ? "none" : "block";
+});
+
+addEventListener("resize", resize);
+document.fonts?.ready.then(render);
+resize();
+setInterval(poll, 200);
+poll();
+</script>
+</body>
+</html>

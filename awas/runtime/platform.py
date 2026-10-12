@@ -81,9 +81,9 @@ def throttled_flags() -> Optional[str]:
     """Raspberry Pi throttling state via vcgencmd, when available.
 
     Bit 0 = under-voltage now, bit 1 = frequency capped, bit 2 = throttled,
-    bit 16 = under-voltage has occurred since boot. Under-voltage is the most
-    common cause of a Pi behaving strangely under load, and it is invisible
-    unless you look for it.
+    bit 3 = soft temperature limit; +16 for "has occurred since boot". Under-
+    voltage and overheating both make a Pi behave strangely under load, and
+    both are invisible unless you look for them. See describe_throttle().
     """
     if not shutil.which("vcgencmd"):
         return None
@@ -93,6 +93,33 @@ def throttled_flags() -> Optional[str]:
         return out.stdout.strip().split("=")[-1] or None
     except (OSError, subprocess.SubprocessError):
         return None
+
+
+# vcgencmd get_throttled bits. The low half is "now", the high half (+16) is
+# "has occurred since boot". Power and heat need different fixes, so name them.
+_THROTTLE_BITS = {
+    0: "under-voltage now", 1: "frequency capped now", 2: "throttled now",
+    3: "soft temperature limit now",
+    16: "under-voltage occurred", 17: "frequency capping occurred",
+    18: "throttling occurred", 19: "soft temperature limit occurred",
+}
+
+
+def describe_throttle(flags: str) -> str:
+    """Plain-language reading of a get_throttled value, with the likely fix."""
+    try:
+        value = int(flags, 16)
+    except ValueError:
+        return "unreadable"
+    if value == 0:
+        return "(0x0 = healthy)"
+    names = [n for bit, n in _THROTTLE_BITS.items() if value & (1 << bit)]
+    power = value & ((1 << 0) | (1 << 16))
+    heat = value & ((1 << 3) | (1 << 19))
+    hint = ("check the power supply" if power and not heat else
+            "check the cooling" if heat and not power else
+            "check the power supply and the cooling")
+    return f"** {', '.join(names)}: {hint} **"
 
 
 def describe() -> str:
@@ -105,7 +132,5 @@ def describe() -> str:
     lines.append(f"temp     {t:.1f} C" if t is not None else "temp     unavailable")
     flags = throttled_flags()
     if flags:
-        lines.append(f"throttle {flags}"
-                     + ("  (0x0 = healthy)" if flags in ("0x0", "0") else
-                        "  ** non-zero: check the power supply **"))
+        lines.append(f"throttle {flags}  {describe_throttle(flags)}")
     return "\n".join(lines)
