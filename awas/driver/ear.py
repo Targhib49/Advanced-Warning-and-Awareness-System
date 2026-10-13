@@ -79,6 +79,37 @@ def mean_ear(left: Sequence[Point], right: Sequence[Point]) -> float:
     return (l + r) / 2.0
 
 
+# Iris centres in the 478-point mesh (the 468 + 10 refinement points), matched
+# to the EAR sets above: 473 sits in MEDIAPIPE_LEFT_EYE, 468 in the right.
+IRIS_LEFT_CENTER = 473
+IRIS_RIGHT_CENTER = 468
+
+
+def iris_drop(landmarks: Sequence[Point], eye_idx: Sequence[int], iris_idx: int) -> float:
+    """How far the iris sits below the line through the eye corners, as a
+    fraction of eye width. Positive is downward.
+
+    Looking down lowers the upper lid with the eye, and an eye-state model
+    reads the lowered lid as closing (bench drive 3: a glance at the lap
+    counted as a microsleep). The iris going with it is what tells a downward
+    look from a closed eye. Rotation-invariant: measured along the normal to
+    the corner line, so a tilted head does not read as a gaze shift.
+    """
+    if len(landmarks) <= max(max(eye_idx), iris_idx):
+        raise ValueError("iris_drop needs the 478-point mesh")
+    (x1, y1), (x4, y4) = landmarks[eye_idx[0]], landmarks[eye_idx[3]]
+    dx, dy = x4 - x1, y4 - y1
+    width = math.hypot(dx, dy)
+    if width <= 0:
+        return 0.0
+    nx, ny = -dy / width, dx / width
+    if ny < 0:                         # corners listed right-to-left: point the normal down
+        nx, ny = -nx, -ny
+    ix, iy = landmarks[iris_idx]
+    mx, my = (x1 + x4) / 2.0, (y1 + y4) / 2.0
+    return ((ix - mx) * nx + (iy - my) * ny) / width
+
+
 def ear_from_landmarks(
     landmarks: Sequence[Point],
     left_idx: Sequence[int] = MEDIAPIPE_LEFT_EYE,

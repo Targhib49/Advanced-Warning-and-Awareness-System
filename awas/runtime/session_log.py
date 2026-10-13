@@ -105,6 +105,9 @@ class SessionLog:
             "eye_source": getattr(state, "eye_source", None),
             "eyes_observable": getattr(state, "eyes_observable", None),
             "p_closed": _round(getattr(state, "p_closed", None), 3),
+            "p_closed_eyes": getattr(state, "p_closed_eyes", None),
+            "iris_drop": getattr(state, "iris_drop", None),
+            "cnn_openness": _round(getattr(state, "cnn_openness", None), 3),
             "ear_openness": _round(getattr(state, "ear_openness", None), 3),
         }
         if telemetry is not None:

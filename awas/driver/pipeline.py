@@ -62,6 +62,9 @@ class DriverState:
     eye_source: str = "ear"
     p_closed: Optional[float] = None
     ear_openness: float = 0.0
+    cnn_openness: Optional[float] = None
+    p_closed_eyes: Optional[tuple] = None    # (left, right), for the log
+    iris_drop: Optional[tuple] = None        # (left, right), eye widths below the corner line
     # Whether the feature window holds enough observation to judge. The
     # pipeline sets it; a hand-built state is taken as usable, as before.
     window_usable: bool = True
@@ -87,13 +90,20 @@ class DriverPipeline:
         update_hz: float = 1.0,
         eye_signal: str = "cnn",
         cnn_confidence: float = 0.80,
-        neutral_pose: tuple = (0.0, 0.0),
+        cnn_scale: Optional[tuple] = None,
+        neutral_pose: Optional[tuple] = None,
         max_eye_yaw_deg: float = 25.0,
         max_eye_pitch_deg: float = 20.0,
     ):
         """`eye_signal`: "cnn" uses T1's P(closed) whenever a frame has one and
         falls back to EAR when it does not; "ear" is the v2 path, kept as the
-        control condition.
+        control condition; "both" averages the two openness readings, so one
+        signal failing cannot hide a closure the other sees (bench drive 2:
+        EAR read ten seconds of closed eyes while the CNN hovered near 0.6).
+
+        `cnn_scale` is (P(closed) open, P(closed) closed) from this driver's
+        guided calibration: their personal CNN scale, exactly as EAR has one.
+        Without it the raw 1 - P(closed) stands in.
 
         `cnn_confidence` replaces the EAR calibration's confidence while the
         CNN is driving. It is UNFITTED: the model scored 98.6% on unseen MRL
@@ -107,12 +117,19 @@ class DriverPipeline:
         there, but their eyes cannot be measured — EAR foreshortens and the eye
         crop turns to profile. Such frames are left out of drowsiness exactly
         like frames with no face, rather than read as drooping lids.
+
+        Without a neutral (no guided calibration, or one measured with the
+        retired solvePnP pose) there is no reference to judge a turn against,
+        and no frame is excluded for its pose — a wrong reference throws away
+        exactly the frames that matter, which the first bench drive showed.
         """
-        if eye_signal not in ("cnn", "ear"):
-            raise ValueError(f"eye_signal must be 'cnn' or 'ear', got {eye_signal!r}")
+        if eye_signal not in ("cnn", "ear", "both"):
+            raise ValueError(f"eye_signal must be 'cnn', 'ear' or 'both', got {eye_signal!r}")
         self.eye_signal = eye_signal
+        self.cnn_scale = cnn_scale
         self.cnn_confidence = cnn_confidence
-        self.neutral_yaw, self.neutral_pitch = neutral_pose
+        self.neutral_pose = neutral_pose
+        self.neutral_yaw, self.neutral_pitch = neutral_pose or (0.0, 0.0)
         self.max_eye_yaw_deg = max_eye_yaw_deg
         self.max_eye_pitch_deg = max_eye_pitch_deg
         self.driver_name = driver_name
@@ -141,9 +158,21 @@ class DriverPipeline:
 
     def eyes_observable(self, obs: FaceObservation) -> bool:
         """Face found AND turned no further than the limits from road-facing."""
+        if self.neutral_pose is None:
+            return obs.face_present
         return (obs.face_present
                 and abs(obs.yaw_deg - self.neutral_yaw) <= self.max_eye_yaw_deg
                 and abs(obs.pitch_deg - self.neutral_pitch) <= self.max_eye_pitch_deg)
+
+    def cnn_openness(self, p_closed: Optional[float]) -> Optional[float]:
+        """1 = open, 0 = closed, on this driver's CNN scale when there is one."""
+        if p_closed is None:
+            return None
+        if self.cnn_scale is not None:
+            p_open, p_shut = self.cnn_scale
+            if p_shut - p_open >= 0.2:       # a scale too narrow to divide by is no scale
+                return float(min(max((p_shut - p_closed) / (p_shut - p_open), 0.0), 1.0))
+        return 1.0 - p_closed
 
     def process(self, obs: FaceObservation, trip_elapsed_sec: float) -> DriverState:
         observable = self.eyes_observable(obs)
@@ -154,9 +183,14 @@ class DriverPipeline:
         # fallback when the CNN cannot crop an eye, and the control to compare
         # the CNN against.
         ear_openness = self.normalizer.openness(obs.ear) if obs.face_present else 0.0
-        use_cnn = (self.eye_signal == "cnn" and obs.face_present
-                   and obs.p_closed is not None)
-        openness = (1.0 - obs.p_closed) if use_cnn else ear_openness
+        cnn_openness = self.cnn_openness(obs.p_closed) if obs.face_present else None
+        if self.eye_signal == "cnn" and cnn_openness is not None:
+            openness, source = cnn_openness, "cnn"
+        elif self.eye_signal == "both" and cnn_openness is not None:
+            openness, source = 0.5 * (cnn_openness + ear_openness), "both"
+        else:
+            openness, source = ear_openness, "ear"
+        use_cnn = source != "ear"
         # Unobservable frames count as "no face" for the window: neither open
         # nor closed, just not seen.
         self.window.add(obs.t, openness, observable)
@@ -193,7 +227,10 @@ class DriverPipeline:
             personalized=self.normalizer.personalized,
             reason=self._last_proposal.reason,
             landmarks=obs.landmarks,
-            eye_source="cnn" if use_cnn else "ear",
+            eye_source=source,
+            cnn_openness=cnn_openness,
+            p_closed_eyes=getattr(obs, "p_closed_eyes", None),
+            iris_drop=getattr(obs, "iris_drop", None),
             p_closed=obs.p_closed,
             ear_openness=ear_openness,
             window_usable=f.usable,

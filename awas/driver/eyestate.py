@@ -115,13 +115,43 @@ class EyeStateClassifier:
             out.append(aligned_crop(gray, centre, width, angle))
         return out
 
-    def p_closed(self, rgb: np.ndarray, landmarks: Sequence[Point]) -> Optional[float]:
-        """Mean P(closed) over the eyes that could be cropped, or None."""
-        crops = [c for c in self.crops(rgb, landmarks) if c is not None]
-        if not crops:
-            return None
-        batch = np.stack(crops)[:, None, :, :]
+    def per_eye(self, rgb: np.ndarray, landmarks: Sequence[Point]) -> list:
+        """[(P(closed), width_px) or None] for (left, right)."""
+        import cv2
+        gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY) if rgb.ndim == 3 else rgb
+        geo = [eye_geometry(landmarks, idx) for idx in (MEDIAPIPE_LEFT_EYE, MEDIAPIPE_RIGHT_EYE)]
+        crops = [aligned_crop(gray, c, w, a) for c, w, a in geo]
+        ok = [i for i, c in enumerate(crops) if c is not None]
+        out = [None, None]
+        if not ok:
+            return out
+        batch = np.stack([crops[i] for i in ok])[:, None, :, :]
         logits = self.session.run(None, {self.input_name: batch})[0]
         z = logits - logits.max(axis=1, keepdims=True)
         p = np.exp(z) / np.exp(z).sum(axis=1, keepdims=True)
-        return float(p[:, 0].mean())          # class 0 = closed
+        for j, i in enumerate(ok):
+            out[i] = (float(p[j, 0]), geo[i][1])    # class 0 = closed
+        return out
+
+    def p_closed(self, rgb: np.ndarray, landmarks: Sequence[Point]) -> Optional[float]:
+        return combine(self.per_eye(rgb, landmarks))
+
+
+def combine(eyes) -> Optional[float]:
+    """One P(closed) from both eyes, weighted by width squared.
+
+    A plain mean failed on the bench: with the camera off to the driver's side
+    (about 50 degrees) the far eye is foreshortened to a sliver, its crop is
+    poor, and its unsure ~0.3 diluted a confident ~0.95 from the near eye to
+    ~0.6 — under the PERCLOS threshold, so ten seconds of closed eyes went
+    uncounted while EAR saw them plainly. Width is how much of the eye the
+    camera actually sees; squaring it lets the near eye lead without
+    discarding the far one when the head is square to the camera.
+    """
+    seen = [e for e in eyes if e is not None]
+    if not seen:
+        return None
+    total = sum(w * w for _, w in seen)
+    if total <= 0:
+        return float(sum(p for p, _ in seen) / len(seen))
+    return float(sum(p * w * w for p, w in seen) / total)

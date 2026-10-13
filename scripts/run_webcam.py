@@ -23,7 +23,7 @@ from awas.core.actions import Action, ActionType
 from awas.core.machine import StateMachine
 from awas.core.states import DrivingState
 from awas.display.model import TripTracker, is_display_worthy, snapshot
-from awas.driver.guided import frame_from
+from awas.driver.guided import POSE_METHOD, frame_from
 from awas.driver.ear import MEDIAPIPE_LEFT_EYE, MEDIAPIPE_RIGHT_EYE
 from awas.runtime.conditions import describe_all, get as get_condition
 from awas.runtime.executor import ActionExecutor
@@ -186,6 +186,9 @@ def main() -> None:
                     help="list the experimental conditions and exit")
     ap.add_argument("--mute", action="store_true", help="decide and log, but stay silent")
     ap.add_argument("--no-log", action="store_true")
+    ap.add_argument("--log-hz", type=float, default=1.0,
+                    help="session samples per second (default 1; raise it for bench tests, "
+                         "where a 1 Hz log cannot show a 3-second eye closure clearly)")
     ap.add_argument("--headless", action="store_true",
                     help="no window — for a Pi running as a boot service")
     ap.add_argument("--dashboard", type=int, default=0, metavar="PORT",
@@ -283,7 +286,7 @@ def main() -> None:
         if args.no_log:
             return None
         return SessionLog(
-            Path(args.sessions), driver=driver_id,
+            Path(args.sessions), driver=driver_id, sample_hz=args.log_hz,
             config={
                 "source": args.video or f"camera{args.camera}",
                 "muted": args.mute,
@@ -337,8 +340,19 @@ def main() -> None:
         for kind, driver in events:
             if kind == "drive":
                 cal = driver.calibration or {}
-                neutral = (cal.get("neutral_yaw") or 0.0, cal.get("neutral_pitch") or 0.0)
-                src.set_driver(driver.id, profiles_dir, driver.eye_signal, neutral_pose=neutral)
+                # Only a neutral measured with the current pose estimate can
+                # judge head turns; an older one would discard good frames.
+                neutral = None
+                if cal.get("pose_method") == POSE_METHOD and cal.get("neutral_yaw") is not None:
+                    neutral = (cal["neutral_yaw"], cal["neutral_pitch"])
+                else:
+                    print(f"  {driver.name}: calibrated before the head-pose fix — head-turn "
+                          f"filtering off until they calibrate again")
+                scale = None
+                if cal.get("cnn_open_p") is not None and cal.get("cnn_closed_p") is not None:
+                    scale = (cal["cnn_open_p"], cal["cnn_closed_p"])
+                src.set_driver(driver.id, profiles_dir, driver.eye_signal,
+                               neutral_pose=neutral, cnn_scale=scale)
                 sm = StateMachine(initial_state=DrivingState.MOVING)
                 trip, held, kss_given = TripTracker(), {"reason": None, "t": -1e9}, None
                 session = new_session(driver.id, driver.eye_signal if eye_model else "ear")
@@ -370,9 +384,18 @@ def main() -> None:
             if display:
                 commands = _drain(display)
                 if flow:
+                    started = False
                     for cmd in [c for c in commands if c.keys() & FLOW_COMMANDS]:
-                        handle(flow.command(cmd), telemetry.timestamp)
+                        events = flow.command(cmd)
+                        handle(events, telemetry.timestamp)
+                        started = started or any(kind == "drive" for kind, _ in events)
                     commands = [c for c in commands if not c.keys() & FLOW_COMMANDS]
+                    if started:
+                        # This frame was read by the setup placeholder — the
+                        # calibration's own deliberate eye closures. Acting on
+                        # it opened bench drive 2 with an "insist" at level 3.
+                        # The new driver's trip begins with the next frame.
+                        continue
                 if not flow or flow.driving:
                     kss_given = _apply_commands(commands, src, session, telemetry.timestamp,
                                                 log, kss_given)

@@ -155,7 +155,9 @@ class SetupFlow:
         if self.screen == "calibrating" and cal is not None:
             snap["calibration"] = {"step": cal.step, "checks": cal.checks, "paused": cal.paused,
                                    "progress": round(cal.progress, 2), "rounds": cal.rounds_done,
-                                   "rounds_needed": cal.cfg.rounds, "closing": cal.closing_now}
+                                   "rounds_needed": cal.cfg.rounds, "closing": cal.closing_now,
+                                   "closed_for": round(cal.closed_for, 1),
+                                   "min_closed_sec": cal.cfg.min_closed_sec}
         if self.screen == "result" and cal is not None and cal.result is not None:
             snap["result"] = cal.result.summary()
         return snap

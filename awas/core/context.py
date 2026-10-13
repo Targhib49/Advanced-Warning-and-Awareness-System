@@ -34,3 +34,8 @@ class StateContext:
     # When the face was last seen, for the degradation ladder (plan §5.4)
     face_last_seen_at: Optional[float] = None
     last_reversing_at: Optional[float] = None
+
+    # Critical alarm is event-driven: at level 4 already, and the microsleep
+    # count of the previous update (a rise is a new microsleep).
+    critical_active: bool = False
+    prev_microsleeps: int = 0

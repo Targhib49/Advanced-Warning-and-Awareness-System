@@ -24,8 +24,11 @@ class StateMachineConfig:
     alert_cooldown_sec: float = 5.0
     jam_nudge_cooldown_sec: float = 20.0
     # Per-level conversational cooldown: higher urgency may repeat sooner.
+    # Level 4 was 10 s; with the alarm now event-driven, its spoken "pull
+    # over" is the periodic reminder while the level holds, and every 10 s for
+    # a minute is nagging, not safety. UNFITTED.
     intervention_cooldown_sec: Dict[int, float] = field(
-        default_factory=lambda: {1: 90.0, 2: 60.0, 3: 30.0, 4: 10.0}
+        default_factory=lambda: {1: 90.0, 2: 60.0, 3: 30.0, 4: 60.0}
     )
 
     # --- context gating (plan §5.2) ---

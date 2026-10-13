@@ -10,11 +10,21 @@ Steps:
     position  face found, close enough, facing forward, enough light; held
     open      look ahead normally (blinks included; medians ignore them)
     closed    close the eyes until a round is seen, twice
+    down      look down at the lap, eyes open (timed)
+    nod       let the head drop and close the eyes, like nodding off (timed)
     done      a result, or a reason it failed
 
 The closed step is self-paced, because a driver with their eyes shut cannot
 read an instruction or a countdown, and the device may have no speaker. A
 round counts once the eyes are seen to close for long enough and reopen.
+
+The last two are the hard cases, and they decide which eye signal this driver
+gets. Measured on the bench with the camera off to the driver's side: the CNN
+read a glance at the lap as closed eyes (P 0.98) and nodding off as open
+(P 0.28), while EAR on the personal scale read both correctly. A signal that
+passes "eyes closed, facing the road" proves little; every signal passes
+that. Each candidate is scored on all four situations and the best one is
+chosen, per driver and per mounting.
 
 Pure: frames in, state out. No camera, no clock.
 """
@@ -26,17 +36,21 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 
+POSE_METHOD = "mediapipe-matrix"
+
+
 @dataclass(frozen=True)
 class GuidedConfig:
     # position
     min_eye_px: float = 18.0          # corner-to-corner; below this the CNN crop is mush
     # Generous on purpose: the device sits left of the wheel (plan §7.5), so a
-    # driver looking at the road is already turned 20-30 degrees from the
-    # camera. "Facing" here means the camera has the face, not that the driver
-    # stares into it. The pose they hold while looking ahead is recorded as
-    # their neutral (GuidedResult.neutral_*), and driving is judged against it.
-    max_yaw_deg: float = 35.0
-    max_pitch_deg: float = 30.0
+    # driver looking at the road is already turned well away from the camera
+    # — about 50 degrees, measured on the bench. "Facing" here means the
+    # camera has a usable view of the face, not that the driver stares into
+    # it. The pose they hold while looking ahead is recorded as their neutral
+    # (GuidedResult.neutral_*), and driving is judged against it.
+    max_yaw_deg: float = 65.0
+    max_pitch_deg: float = 35.0
     min_brightness: float = 45.0      # mean gray around the eyes, 0-255
     max_brightness: float = 225.0
     hold_sec: float = 2.0             # all checks passing this long to move on
@@ -51,10 +65,17 @@ class GuidedConfig:
     reopen_sec: float = 0.3
     trim_sec: float = 0.2             # drop the lid-moving frames at each end
     closed_timeout_sec: float = 30.0
+    # The hard cases, each timed: settle into it, then measure. The settle
+    # covers the spoken instruction (~3-4 s; the driver may be looking at
+    # their lap or have their eyes shut, so the voice is all they get).
+    settle_sec: float = 4.0
+    hard_case_sec: float = 3.0
     # verdict
     min_ear_separation: float = 0.15  # (open - closed) / open
     cnn_min_accuracy: float = 0.90
     cnn_min_gap: float = 0.50         # median P(closed): closed minus open
+    closed_openness: float = 0.20     # a signal calls the eye closed below this (PERCLOS P80)
+    min_signal_score: float = 0.85    # mean per-situation accuracy the chosen signal must reach
 
 
 @dataclass
@@ -72,7 +93,7 @@ class Frame:
 @dataclass
 class GuidedResult:
     ok: bool
-    eye_signal: Optional[str] = None      # "cnn" | "ear" when ok
+    eye_signal: Optional[str] = None      # "cnn" | "ear" | "both" when ok
     reason: str = ""
     open_ear: Optional[float] = None
     closed_ear: Optional[float] = None
@@ -86,10 +107,19 @@ class GuidedResult:
     # direction, relative to wherever the camera happens to be mounted.
     neutral_yaw: Optional[float] = None
     neutral_pitch: Optional[float] = None
+    # Per candidate signal: {"score": mean accuracy, "cases": {situation: accuracy}}.
+    scores: dict = field(default_factory=dict)
+    down_frames: int = 0
+    nod_frames: int = 0
 
     def summary(self) -> dict:
-        return {k: (round(v, 4) if isinstance(v, float) else v)
-                for k, v in self.__dict__.items()}
+        out = {k: (round(v, 4) if isinstance(v, float) else v)
+               for k, v in self.__dict__.items()}
+        # Which head-pose estimate the neutral was measured with. A neutral
+        # from the retired six-point solvePnP is not comparable to MediaPipe's
+        # and must not be used to judge head turns (run_webcam checks this).
+        out["pose_method"] = POSE_METHOD
+        return out
 
 
 @dataclass
@@ -108,6 +138,9 @@ class GuidedCalibration:
     _reopen_since: Optional[float] = None
     _closed_started: Optional[float] = None
     _open_ref: Optional[float] = None
+    _down: List[Frame] = field(default_factory=list)
+    _nod: List[Frame] = field(default_factory=list)
+    _case_started: Optional[float] = None
     paused: bool = False
 
     # ---------------- feeding ----------------
@@ -122,6 +155,8 @@ class GuidedCalibration:
             self._open_step(f)
         elif self.step == "closed":
             self._closed_step(f)
+        elif self.step in ("down", "nod"):
+            self._hard_case(f)
 
     def _checks(self, f: Frame) -> dict:
         c = self.cfg
@@ -188,7 +223,25 @@ class GuidedCalibration:
                     self._rounds_done += 1
                 self._run, self._reopen_since = [], None
                 if self._rounds_done >= c.rounds:
-                    self._finish(self._verdict())
+                    self.step, self._case_started = "down", f.t
+
+    def _hard_case(self, f: Frame) -> None:
+        """Timed: settle, then collect every frame with a face for a few seconds.
+
+        Not self-paced like the closed step — there is no way to tell from the
+        eyes whether the driver has done it, which is the whole question. A
+        face lost while nodding is not collected; that is fine, it only means
+        fewer frames for that case.
+        """
+        c = self.cfg
+        elapsed = f.t - self._case_started
+        if c.settle_sec <= elapsed and f.face:
+            (self._down if self.step == "down" else self._nod).append(f)
+        if elapsed >= c.settle_sec + c.hard_case_sec:
+            if self.step == "down":
+                self.step, self._case_started = "nod", f.t
+            else:
+                self._finish(self._verdict())
 
     # ---------------- verdict ----------------
 
@@ -212,14 +265,51 @@ class GuidedCalibration:
             cnn_ok = (r.cnn_accuracy >= c.cnn_min_accuracy
                       and r.cnn_closed_p - r.cnn_open_p >= c.cnn_min_gap)
         ear_ok = sep >= c.min_ear_separation
-
-        if cnn_ok:
-            r.ok, r.eye_signal = True, "cnn"
-        elif ear_ok:
-            r.ok, r.eye_signal = True, "ear"
-            r.reason = "the CNN did not separate this driver's eyes; using EAR" if po else ""
-        else:
+        r.down_frames, r.nod_frames = len(self._down), len(self._nod)
+        if not ear_ok and not cnn_ok:
             r.reason = "open and closed eyes looked too alike"
+            return r
+
+        # Each signal's openness on this driver's own scale, 1 open .. 0 closed.
+        def ear_open(x):
+            return min(max((x.ear - closed_ear) / (open_ear - closed_ear), 0.0), 1.0)
+
+        def cnn_open(x):
+            if x.p_closed is None:
+                return None
+            return min(max((r.cnn_closed_p - x.p_closed) / (r.cnn_closed_p - r.cnn_open_p), 0.0), 1.0)
+
+        def both_open(x):
+            a = cnn_open(x)
+            return None if a is None else 0.5 * (a + ear_open(x))
+
+        candidates = {}
+        if ear_ok:
+            candidates["ear"] = ear_open
+        if cnn_ok:
+            candidates["cnn"] = cnn_open
+        if ear_ok and cnn_ok:
+            candidates["both"] = both_open
+
+        situations = {"open": (self._open, False), "closed": (self._closed, True),
+                      "down": (self._down, False), "nod": (self._nod, True)}
+        for name, signal in candidates.items():
+            cases = {}
+            for case, (frames, shut) in situations.items():
+                vals = [v for v in (signal(x) for x in frames) if v is not None]
+                if vals:
+                    cases[case] = round(sum((v < c.closed_openness) == shut for v in vals) / len(vals), 3)
+            score = sum(cases.values()) / len(cases) if cases else 0.0
+            r.scores[name] = {"score": round(score, 3), "cases": cases}
+
+        # Best mean, then best worst case; on a tie the simpler signal (EAR,
+        # the v2 baseline) — the order of `candidates` breaks it.
+        best = max(r.scores, key=lambda k: (r.scores[k]["score"], min(r.scores[k]["cases"].values(), default=0)))
+        if r.scores[best]["score"] >= c.min_signal_score:
+            r.ok, r.eye_signal = True, best
+        else:
+            r.reason = (f"no eye signal read all four situations reliably "
+                        f"(best: {best} {r.scores[best]['score']:.0%})")
         return r
 
     def _finish(self, result: GuidedResult) -> None:
@@ -238,14 +328,25 @@ class GuidedCalibration:
             return 0.0
         if self.step == "open":
             got = (self._open[-1].t - self._open[0].t) if self._open else 0.0
-            return 0.1 + 0.5 * min(got / c.open_sec, 1.0)
+            return 0.1 + 0.3 * min(got / c.open_sec, 1.0)
         if self.step == "closed":
-            return 0.6 + 0.4 * self._rounds_done / c.rounds
+            return 0.4 + 0.25 * self._rounds_done / c.rounds
+        if self.step == "down":
+            return 0.65
+        if self.step == "nod":
+            return 0.82
         return 1.0
 
     @property
     def closing_now(self) -> bool:
         return self.step == "closed" and bool(self._run)
+
+    @property
+    def closed_for(self) -> float:
+        """Seconds the current closure has lasted; drives the spoken "open"."""
+        if not self.closing_now or len(self._run) < 2:
+            return 0.0
+        return self._run[-1].t - self._run[0].t
 
 
 def frame_from(obs, bgr) -> Frame:

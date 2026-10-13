@@ -58,9 +58,14 @@ class FaceObservation:
     pitch_deg: float = 0.0
     yaw_deg: float = 0.0
     roll_deg: float = 0.0
-    # T1 eye-state CNN, mean over both eyes; None when no model ran or the
-    # eyes were too small to crop (awas.driver.eyestate).
+    # T1 eye-state CNN, both eyes combined by visible width; None when no
+    # model ran or the eyes were too small to crop (awas.driver.eyestate).
     p_closed: Optional[float] = None
+    # Per eye, for the log: (left, right) P(closed), None where not cropped.
+    p_closed_eyes: Optional[tuple] = None
+    # (left, right) iris position below the eye-corner line, in eye widths
+    # (awas.driver.ear.iris_drop); None without the 478-point mesh.
+    iris_drop: Optional[tuple] = None
 
 
 def camera_matrix(width: int, height: int) -> np.ndarray:
@@ -76,6 +81,30 @@ def camera_matrix(width: int, height: int) -> np.ndarray:
         [0.0, f, height / 2.0],
         [0.0, 0.0, 1.0],
     ], dtype=np.float64)
+
+
+def pose_from_matrix(matrix) -> Tuple[float, float, float]:
+    """(pitch, yaw, roll) in degrees from MediaPipe's facial transformation
+    matrix — the 4x4 that places its canonical 3D face in camera space.
+
+    Preferred over `head_pose` below. Measured on the Pi with the camera off to
+    the driver's side (about 50 degrees): 5 frame-to-frame jumps over 20
+    degrees in 743 frames, against 113 for the six-point solvePnP, which flips
+    between mirror-image solutions at that angle and reported a +79 degree
+    pitch for a driver sitting upright. The full mesh constrains the fit far
+    better than six points on a generic face.
+
+    Yaw and pitch are where the face's own forward axis points, in camera
+    space. Their zero is "facing the camera"; AWAS only ever uses them
+    relative to a driver's calibrated road-facing pose, so the convention
+    needs to be stable, not absolute.
+    """
+    r = np.asarray(matrix, dtype=np.float64)[:3, :3]
+    forward, right = r[:, 2], r[:, 0]
+    yaw = math.degrees(math.atan2(forward[0], forward[2]))
+    pitch = math.degrees(math.atan2(-forward[1], math.hypot(forward[0], forward[2])))
+    roll = math.degrees(math.atan2(right[1], right[0]))
+    return pitch, yaw, roll
 
 
 def head_pose(
@@ -199,7 +228,8 @@ class MediaPipeLandmarker:
             # Iris refinement gives the 478-point mesh; the extra points are
             # what make gaze available later without a second model.
             output_face_blendshapes=False,
-            output_facial_transformation_matrixes=False,
+            # The head pose source (pose_from_matrix); costs next to nothing.
+            output_facial_transformation_matrixes=True,
         )
         self._landmarker = FaceLandmarker.create_from_options(options)
 
@@ -222,12 +252,25 @@ class MediaPipeLandmarker:
         except ValueError:
             return FaceObservation(t=t, face_present=False)
 
-        pose = head_pose([marks[i] for i in POSE_IDX], w, h)
+        matrices = getattr(result, "facial_transformation_matrixes", None)
+        if matrices:
+            pose = pose_from_matrix(matrices[0])
+        else:   # a mediapipe build that returns no matrix: the old six-point fit
+            pose = head_pose([marks[i] for i in POSE_IDX], w, h)
         pitch, yaw, roll = pose if pose else (0.0, 0.0, 0.0)
+
+        drop = None
+        if len(marks) >= 478:
+            from awas.driver.ear import (
+                IRIS_LEFT_CENTER, IRIS_RIGHT_CENTER, MEDIAPIPE_LEFT_EYE,
+                MEDIAPIPE_RIGHT_EYE, iris_drop,
+            )
+            drop = (round(iris_drop(marks, MEDIAPIPE_LEFT_EYE, IRIS_LEFT_CENTER), 3),
+                    round(iris_drop(marks, MEDIAPIPE_RIGHT_EYE, IRIS_RIGHT_CENTER), 3))
 
         return FaceObservation(
             t=t, face_present=True, landmarks=marks, ear=ear,
-            pitch_deg=pitch, yaw_deg=yaw, roll_deg=roll,
+            pitch_deg=pitch, yaw_deg=yaw, roll_deg=roll, iris_drop=drop,
         )
 
     def close(self) -> None:

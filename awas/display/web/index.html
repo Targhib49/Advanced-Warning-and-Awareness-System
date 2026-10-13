@@ -134,17 +134,31 @@ const SETUP = {
     ],
     agree: "Setuju", disagree: "Tidak setuju",
     camLive: "● KAMERA AKTIF", cancel: "Batal",
-    steps: { position: "1 · POSISI", open: "2 · MATA TERBUKA", closed: "3 · MATA TERTUTUP" },
+    steps: { position: "1 · POSISI", open: "2 · MATA TERBUKA", closed: "3 · MATA TERTUTUP",
+             down: "4 · LIHAT KE BAWAH", nod: "5 · KEPALA TERKULAI" },
     say: {
       position: "Duduk seperti saat mengemudi. Masukkan wajah ke dalam oval.",
       open: "Lihat ke jalan di depan, seperti saat mengemudi. Berkedip seperti biasa.",
-      closed: "Pejamkan mata sekitar 3 detik, lalu buka kembali.",
+      closed: "Pejamkan mata sampai terdengar bunyi, lalu buka.",
+      down: "Lihat ke pangkuan Anda, mata terbuka, sampai terdengar bunyi.",
+      nod: "Biarkan kepala terkulai dan pejamkan mata, sampai terdengar bunyi.",
       closing: "Bagus, tahan sebentar…", paused: "Hadap kembali ke kamera.",
     },
     checks: { face: "Wajah terlihat", distance: "Cukup dekat", facing: "Menghadap ke depan", light: "Cahaya cukup" },
     round: (n, of) => `Putaran ${Math.min(n + 1, of)} dari ${of}`,
     hello: n => `Halo, ${n}`, start: "Mulai mengemudi", recal: "Kalibrasi ulang", notMe: "Bukan saya",
-    signal: s => s === "cnn" ? "Sinyal mata: model CNN (terlatih)" : "Sinyal mata: EAR (rasio mata)",
+    signal: s => ({ cnn: "Sinyal mata: model CNN (terlatih)", ear: "Sinyal mata: EAR (rasio mata)",
+                    both: "Sinyal mata: CNN + EAR (keduanya)" })[s] ?? "",
+    voice: {
+      position: "Duduk seperti saat mengemudi, dengan wajah di dalam oval.",
+      open: "Lihat ke jalan di depan. Berkedip seperti biasa.",
+      closed: "Pejamkan mata sampai terdengar bunyi.",
+      reopen: "Buka mata.", again: "Sekali lagi. Pejamkan mata sampai terdengar bunyi.",
+      down: "Sekarang lihat ke pangkuan Anda, mata tetap terbuka, sampai terdengar bunyi.",
+      nod: "Sekarang biarkan kepala terkulai dan pejamkan mata, sampai terdengar bunyi.",
+      done: "Buka mata. Kalibrasi selesai.", failed: "Buka mata. Kalibrasi belum berhasil.",
+    },
+    voiceLang: "id-ID",
     doneTitle: "Kalibrasi selesai", failTitle: "Kalibrasi belum berhasil", retry: "Coba lagi",
   },
   en: {
@@ -162,17 +176,31 @@ const SETUP = {
     ],
     agree: "I agree", disagree: "I don't agree",
     camLive: "● CAMERA ON", cancel: "Cancel",
-    steps: { position: "1 · POSITION", open: "2 · EYES OPEN", closed: "3 · EYES CLOSED" },
+    steps: { position: "1 · POSITION", open: "2 · EYES OPEN", closed: "3 · EYES CLOSED",
+             down: "4 · LOOK DOWN", nod: "5 · HEAD DROP" },
     say: {
       position: "Sit as you would to drive. Get your face inside the oval.",
       open: "Look at the road ahead, as you do when driving. Blink as usual.",
-      closed: "Close your eyes for about 3 seconds, then open them.",
+      closed: "Close your eyes until you hear the beep, then open them.",
+      down: "Look down at your lap, eyes open, until the beep.",
+      nod: "Let your head drop and close your eyes, until the beep.",
       closing: "Good, hold it…", paused: "Face the camera again.",
     },
     checks: { face: "Face visible", distance: "Close enough", facing: "Facing forward", light: "Enough light" },
     round: (n, of) => `Round ${Math.min(n + 1, of)} of ${of}`,
     hello: n => `Hello, ${n}`, start: "Start driving", recal: "Calibrate again", notMe: "Not me",
-    signal: s => s === "cnn" ? "Eye signal: CNN model (learned)" : "Eye signal: EAR (eye ratio)",
+    signal: s => ({ cnn: "Eye signal: CNN model (learned)", ear: "Eye signal: EAR (eye ratio)",
+                    both: "Eye signal: CNN + EAR (both)" })[s] ?? "",
+    voice: {
+      position: "Sit as you do to drive, with your face in the oval.",
+      open: "Look at the road ahead. Blink as usual.",
+      closed: "Close your eyes until you hear the beep.",
+      reopen: "Open your eyes.", again: "Once more. Close your eyes until the beep.",
+      down: "Now look down at your lap, eyes open, until the beep.",
+      nod: "Now let your head drop and close your eyes, until the beep.",
+      done: "Open your eyes. Calibration done.", failed: "Open your eyes. Calibration didn't work.",
+    },
+    voiceLang: "en-US",
     doneTitle: "Calibration done", failTitle: "Calibration didn't work", retry: "Try again",
   },
 };
@@ -288,6 +316,7 @@ function renderSetup(s) {
     setupEl.querySelector("input, button.primary")?.focus();
   }
   if (s.screen === "calibrating") updateCalibration(s, S);
+  speakCalibration(s, S);
 }
 
 function buildSetup(s, S) {
@@ -339,9 +368,9 @@ function buildSetup(s, S) {
     case "result": {
       const r = s.result || {};
       const pct = v => v == null ? "—" : `${Math.round(v * 100)}%`;
-      const detail = r.ok
-        ? `EAR ${r.open_ear?.toFixed(3)} / ${r.closed_ear?.toFixed(3)}  ·  CNN ${pct(r.cnn_accuracy)}`
-        : (r.reason || "");
+      const order = ["ear", "cnn", "both"].filter(k => r.scores?.[k]);
+      const scores = order.map(k => `${k.toUpperCase()}${k === r.eye_signal ? " ✓" : ""} ${pct(r.scores[k].score)}`).join("  ·  ");
+      const detail = r.ok ? scores : [r.reason, scores].filter(Boolean).join("  —  ");
       return [...head, el("h1", {}, r.ok ? S.doneTitle : S.failTitle),
               el("p", {}, r.ok ? S.signal(r.eye_signal) : ""), el("p", { class: "muted" }, detail), err,
               el("div", { class: "row" },
@@ -352,6 +381,70 @@ function buildSetup(s, S) {
     }
   }
   return head;
+}
+
+// ---------------------------------------------------------------- spoken cues
+// A driver with their eyes closed cannot read the screen, and the device may
+// have no speaker, so the page that shows the calibration also speaks it
+// through whatever is displaying it. Instructions only — never an alert: the
+// safety path stays on the device (plan §7.5).
+let cue = { step: null, rounds: 0, toldOpen: false, result: false };
+let audioCtx = null;
+
+function beep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+    const t = audioCtx.currentTime;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    o.start(t); o.stop(t + 0.4);
+  } catch (_) { /* no audio here: the on-screen text still says it */ }
+}
+
+function say(text, S) {
+  if (!("speechSynthesis" in window) || !text) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = S.voiceLang;
+  const v = speechSynthesis.getVoices().find(x => x.lang?.replace("_", "-").startsWith(S.voiceLang.slice(0, 2)));
+  if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+
+function speakCalibration(s, S) {
+  const c = s.calibration, V = S.voice;
+  if (s.screen !== "calibrating" && s.screen !== "result") {
+    cue = { step: null, rounds: 0, toldOpen: false, result: false };   // a fresh run speaks from the start
+    return;
+  }
+  if (s.screen === "result" && !cue.result) {
+    cue.result = true;
+    beep();                                        // ends the last timed step
+    setTimeout(() => say(s.result?.ok ? V.done : V.failed, S), 400);
+    return;
+  }
+  if (s.screen !== "calibrating" || !c) return;
+  cue.result = false;
+  if (c.step !== cue.step) {                       // a new step: say what to do
+    const prev = cue.step;
+    cue = { step: c.step, rounds: c.rounds, toldOpen: false, result: false };
+    if (prev === "down") { beep(); setTimeout(() => say(V[c.step], S), 400); }   // a beep ends a timed step
+    else if (prev === "closed") setTimeout(() => say(V[c.step], S), 1000);        // let "open your eyes" finish
+    else say(V[c.step], S);
+    return;
+  }
+  if (c.step !== "closed") return;
+  if (c.closing && !cue.toldOpen && c.closed_for >= c.min_closed_sec + 0.8) {
+    cue.toldOpen = true;                           // seen enough: tell them to open
+    beep();
+    setTimeout(() => say(V.reopen, S), 400);
+  }
+  if (c.rounds > cue.rounds) {                     // a round was counted
+    cue.rounds = c.rounds; cue.toldOpen = false;
+    if (c.rounds < c.rounds_needed) setTimeout(() => say(V.again, S), 1500);
+  }
 }
 
 function updateCalibration(s, S) {

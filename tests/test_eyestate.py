@@ -186,3 +186,33 @@ def test_session_samples_carry_both_eye_signals_and_the_fusion(tmp_path):
     assert rec["eye_source"] == "cnn" and rec["p_closed"] == 0.12 and rec["ear_openness"] == 0.8
     assert set(rec["channels"]) == {"facial", "vehicle"}
     assert rec["fused_level"] == fused.level
+
+
+# ---------------------------------------------------------------- two eyes, two signals
+
+def test_the_eye_the_camera_sees_better_leads():
+    from awas.driver.eyestate import combine
+    # Camera off to the side: near eye 40 px wide and shut, far eye 16 px and unsure.
+    assert combine([(0.95, 40.0), (0.30, 16.0)]) > 0.85
+    assert combine([(0.95, 30.0), (0.30, 30.0)]) == pytest.approx(0.625)   # square on: a plain mean
+    assert combine([None, (0.7, 25.0)]) == pytest.approx(0.7)
+    assert combine([None, None]) is None
+
+
+def test_personal_cnn_scale_maps_this_drivers_closed_to_zero():
+    pipe = DriverPipeline(eye_signal="cnn", cnn_scale=(0.0, 0.84))
+    assert pipe.cnn_openness(0.84) == pytest.approx(0.0)
+    assert pipe.cnn_openness(0.0) == pytest.approx(1.0)
+    assert pipe.cnn_openness(0.66) == pytest.approx(0.214, abs=1e-3)
+    narrow = DriverPipeline(eye_signal="cnn", cnn_scale=(0.4, 0.5))   # too narrow to trust
+    assert narrow.cnn_openness(0.5) == pytest.approx(0.5)
+
+
+def test_both_averages_so_one_failing_signal_cannot_hide_a_closure():
+    # Bench drive 2: EAR read the eyes shut, the CNN hovered near 0.6.
+    pipe = DriverPipeline(eye_signal="both", cnn_scale=(0.0, 0.84))
+    s = None
+    for i in range(300):
+        s = pipe.process(FaceObservation(t=i / 30, face_present=True, ear=0.05, p_closed=0.6), i / 30)
+    assert s.eye_source == "both"
+    assert s.openness == pytest.approx(0.5 * (s.cnn_openness + s.ear_openness))

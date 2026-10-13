@@ -18,8 +18,19 @@ def frames(t0, seconds, ear, p_closed=None, **kw):
     return [Frame(t=t0 + i / FPS, ear=ear, p_closed=p_closed, **args) for i in range(n)], t0 + n / FPS
 
 
-def run_session(cal, cnn=True, look_away_at_open=False):
-    """A cooperative driver: positions, looks ahead (with blinks), closes twice."""
+# The two hard cases, (seconds, EAR, P(closed)), from the bench gaze test with
+# the camera off to the side: looking down at the lap lowers EAR a little and
+# fools the CNN into "closed"; nodding off lowers EAR fully and fools it into "open".
+CNN_FOOLED = ((7.5, 0.22, 0.95), (7.5, 0.16, 0.30))
+# The mirror image: EAR fooled both ways, the CNN right.
+EAR_FOOLED = ((7.5, 0.15, 0.04), (7.5, 0.26, 0.95))
+# Every signal right.
+ALL_RIGHT = ((7.5, 0.24, 0.04), (7.5, 0.15, 0.95))
+
+
+def run_session(cal, cnn=True, look_away_at_open=False, hard=CNN_FOOLED):
+    """A cooperative driver: positions, looks ahead (with blinks), closes
+    twice, then looks down and nods off."""
     t, seq = 0.0, []
     def add(sec, ear, p, **kw):
         nonlocal t
@@ -35,6 +46,8 @@ def run_session(cal, cnn=True, look_away_at_open=False):
     for _ in range(2):                                      # two deliberate closures
         add(2.0, 0.15, 0.93)
         add(1.0, 0.26, 0.05)
+    for sec, ear, p in hard:                                # look down, then nod off
+        add(sec, ear, p)
     for f in seq:
         cal.feed(f)
     return cal
@@ -75,13 +88,36 @@ def test_delete_takes_profile_and_sessions_with_it(tmp_path):
 
 # ---------------------------------------------------------------- guided calibration
 
-def test_cooperative_driver_calibrates_with_the_cnn():
+def test_a_cnn_fooled_by_the_hard_cases_loses_to_ear():
+    # The bench result: both separate open from closed facing the road, only
+    # EAR gets looking down and nodding off right.
     cal = run_session(GuidedCalibration())
     r = cal.result
-    assert r.ok and r.eye_signal == "cnn"
+    assert r.ok and r.eye_signal == "ear"
     assert r.open_ear == pytest.approx(0.27, abs=0.01)     # blinks ignored by the median
     assert r.closed_ear == pytest.approx(0.15)
-    assert r.cnn_accuracy > 0.9 and cal.rounds_done == 2
+    assert r.cnn_accuracy > 0.9 and cal.rounds_done == 2   # it passed the easy part
+    # "open" includes the driver's ordinary blinks, so no signal scores 1.0 there.
+    assert r.scores["ear"]["score"] > 0.95 and r.scores["ear"]["cases"]["nod"] == 1.0
+    assert r.scores["cnn"]["cases"]["down"] == 0.0 and r.scores["cnn"]["cases"]["nod"] == 0.0
+    assert r.down_frames > 0 and r.nod_frames > 0
+
+
+def test_an_ear_fooled_by_the_hard_cases_loses_to_the_cnn():
+    r = run_session(GuidedCalibration(), hard=EAR_FOOLED).result
+    assert r.ok and r.eye_signal == "cnn"
+
+
+def test_when_every_signal_is_right_the_simplest_is_kept():
+    r = run_session(GuidedCalibration(), hard=ALL_RIGHT).result
+    assert r.ok and r.eye_signal == "ear"
+    assert len({v["score"] for v in r.scores.values()}) == 1      # a three-way tie
+
+
+def test_when_no_signal_is_reliable_calibration_fails_with_a_reason():
+    worst = ((7.5, 0.15, 0.95), (7.5, 0.27, 0.04))          # every signal wrong both times
+    r = run_session(GuidedCalibration(), hard=worst).result
+    assert not r.ok and "no eye signal" in r.reason
 
 
 def test_no_cnn_falls_back_to_ear():
@@ -92,7 +128,8 @@ def test_no_cnn_falls_back_to_ear():
 def test_a_cnn_that_cannot_tell_falls_back_to_ear():
     cal = GuidedCalibration()
     t, seq = 0.0, []
-    for sec, ear in ((2.5, 0.26), (9.0, 0.26), (2.0, 0.15), (1.0, 0.26), (2.0, 0.15), (1.0, 0.26)):
+    for sec, ear in ((2.5, 0.26), (9.0, 0.26), (2.0, 0.15), (1.0, 0.26), (2.0, 0.15), (1.0, 0.26),
+                     (7.5, 0.22), (7.5, 0.16)):
         f, t = frames(t, sec, ear, p_closed=0.5)            # the CNN shrugs at everything
         seq += f
     for f in seq:
@@ -152,7 +189,7 @@ def test_new_driver_end_to_end(tmp_path):
     assert flow.screen == "calibrating" and flow.camera_wanted
     t, seq = 0.0, []
     for sec, ear, p in ((2.5, .26, .05), (9.0, .26, .05), (2.0, .15, .93), (1.0, .26, .05),
-                        (2.0, .15, .93), (1.0, .26, .05)):
+                        (2.0, .15, .93), (1.0, .26, .05), *CNN_FOOLED):
         f, t = frames(t, sec, ear, p); seq += f
     for f in seq:
         flow.feed(f, tmp_path / "profiles")
@@ -217,3 +254,29 @@ def test_commands_out_of_place_are_ignored(tmp_path):
     flow = SetupFlow(DriverRegistry(tmp_path))
     assert flow.command({"start": True}) == [] and flow.screen == "select"
     assert flow.command({"consent": True}) == [] and flow.screen == "select"
+
+
+def test_cnn_alone_when_ear_cannot_separate():
+    # Open and closed EAR nearly equal (lids not tracked), the CNN sure of both.
+    cal = GuidedCalibration()
+    t, seq = 0.0, []
+    for sec, ear, p in ((2.5, .26, .05), (9.0, .26, .05), (2.0, .25, .95), (1.0, .26, .05),
+                        (2.0, .25, .95), (1.0, .26, .05), (7.5, .26, .04), (7.5, .26, .95)):
+        f, t = frames(t, sec, ear, p); seq += f
+    for f in seq:
+        cal.feed(f)
+    assert cal.result.ok and cal.result.eye_signal == "cnn"
+
+
+def test_snapshot_reports_how_long_the_eyes_have_been_closed(tmp_path):
+    reg = DriverRegistry(tmp_path)
+    d = reg.create("Andi"); reg.record_consent(d.id)
+    flow = SetupFlow(reg)
+    flow.command({"select_driver": d.id})
+    t, seq = 0.0, []
+    for sec, ear, p in ((2.5, .26, .05), (9.0, .26, .05), (1.5, .15, .93)):
+        f, t = frames(t, sec, ear, p); seq += f
+    for f in seq:
+        flow.feed(f, tmp_path / "profiles")
+    c = flow.snapshot()["calibration"]
+    assert c["closing"] and c["closed_for"] >= 1.3 and c["min_closed_sec"] > 0

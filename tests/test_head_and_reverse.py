@@ -25,7 +25,7 @@ def _obs(t, yaw=0.0, pitch=0.0, p_closed=0.05, ear=0.27):
 # ---------------------------------------------------------------- head turned
 
 def test_a_long_look_over_the_shoulder_is_not_drowsiness():
-    pipe = DriverPipeline(eye_signal="cnn")
+    pipe = DriverPipeline(eye_signal="cnn", neutral_pose=(0.0, 0.0))
     s = None
     for i in range(10 * FPS):
         # Head turned 60 degrees: the eye crop reads "closed" — it is in profile.
@@ -35,7 +35,7 @@ def test_a_long_look_over_the_shoulder_is_not_drowsiness():
 
 
 def test_the_same_closed_eyes_facing_the_road_do_count():
-    pipe = DriverPipeline(eye_signal="cnn")
+    pipe = DriverPipeline(eye_signal="cnn", neutral_pose=(0.0, 0.0))
     s = None
     for i in range(10 * FPS):
         s = pipe.process(_obs(i / FPS, yaw=0.0, p_closed=0.95, ear=0.12), i / FPS)
@@ -51,19 +51,50 @@ def test_limits_are_measured_from_the_drivers_own_road_facing_pose():
     assert not pipe.eyes_observable(_obs(0.0, yaw=-25.0, pitch=35.0)) # looking down at the dash
 
 
+def test_without_a_calibrated_neutral_no_frame_is_excluded_for_pose():
+    # A wrong reference throws away exactly the frames that matter (bench drive 1).
+    pipe = DriverPipeline(eye_signal="cnn")
+    assert pipe.eyes_observable(_obs(0.0, yaw=-55.0, pitch=10.0))
+    s = None
+    for i in range(10 * FPS):
+        s = pipe.process(_obs(i / FPS, yaw=-55.0, p_closed=0.95, ear=0.12), i / FPS)
+    assert s.perclos > 0.8
+
+
+def test_mediapipe_matrix_pose_is_continuous_and_signed():
+    import math
+    import numpy as np
+    from awas.driver.landmarks import pose_from_matrix
+
+    def rot_y(deg):
+        a = math.radians(deg)
+        m = np.eye(4)
+        m[:3, :3] = [[math.cos(a), 0, math.sin(a)], [0, 1, 0], [-math.sin(a), 0, math.cos(a)]]
+        return m
+
+    assert pose_from_matrix(np.eye(4)) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9)
+    yaws = [pose_from_matrix(rot_y(d))[1] for d in range(-70, 71, 10)]
+    assert yaws == pytest.approx(list(range(-70, 71, 10)), abs=1e-6)   # no flips, no jumps
+
+
+def test_calibration_summary_names_its_pose_method():
+    from awas.driver.guided import POSE_METHOD, GuidedResult
+    assert GuidedResult(ok=True).summary()["pose_method"] == POSE_METHOD
+
+
 def test_guided_calibration_accepts_an_off_axis_camera_and_records_neutral():
     cal = GuidedCalibration()
     t, frames = 0.0, []
     for sec, ear, p in ((2.5, .26, .05), (9.0, .26, .05), (2.0, .15, .93), (1.0, .26, .05),
-                        (2.0, .15, .93), (1.0, .26, .05)):
+                        (2.0, .15, .93), (1.0, .26, .05), (7.5, .22, .95), (7.5, .16, .30)):
         for i in range(int(sec * FPS)):
             frames.append(Frame(t=t + i / FPS, face=True, ear=ear, p_closed=p, eye_px=30,
-                                yaw=-24.0, pitch=7.0, brightness=120))
+                                yaw=-50.0, pitch=7.0, brightness=120))
         t += int(sec * FPS) / FPS
     for f in frames:
         cal.feed(f)
     r = cal.result
-    assert r.ok and r.neutral_yaw == pytest.approx(-24.0) and r.neutral_pitch == pytest.approx(7.0)
+    assert r.ok and r.neutral_yaw == pytest.approx(-50.0) and r.neutral_pitch == pytest.approx(7.0)
 
 
 # ---------------------------------------------------------------- reversing
@@ -140,3 +171,50 @@ def test_the_forward_view_is_ignored_while_reversing(sim):
     sim.handle(_tel(gear=-1))
     sim.handle(MAGIC + b"F" + buf.tobytes())
     assert sim.read(1.0).lane_offset_m is None and sim.lane_tried == 0
+
+
+# ---------------------------------------------------------------- the critical alarm answers events
+
+def _count(actions, kind):
+    return sum(1 for a in actions if a.type == kind)
+
+
+def _drive_critical(sm, t, micro, level=4):
+    return sm.update(Telemetry(timestamp=t, ignition_on=True, speed_kmh=60.0,
+                               drowsiness_level=level, confidence=0.9, microsleep_count=micro))
+
+
+def test_one_microsleep_held_in_the_window_alarms_once():
+    # Bench drive 3: one 2 s closure, then a minute of level 4 from memory alone.
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+    alarms = speech = 0
+    for i in range(60):
+        acts = _drive_critical(sm, float(i), micro=1)
+        alarms += _count(acts, ActionType.ALERT)
+        speech += _count(acts, ActionType.SPEAK)
+    assert alarms == 1                       # was ~12 on a 5 s cooldown
+    assert speech == 1                       # the calm reminder comes at 60 s, not every 10 s
+
+
+def test_a_new_microsleep_alarms_again():
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+    alarms = []
+    for i in range(30):
+        micro = 1 if i < 20 else 2                 # a second microsleep at t=20
+        if _count(_drive_critical(sm, float(i), micro), ActionType.ALERT):
+            alarms.append(i)
+    assert alarms == [0, 20]
+
+
+def test_the_reminder_repeats_while_the_level_holds():
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+    spoken = [i for i in range(130)
+              if _count(_drive_critical(sm, float(i), micro=1), ActionType.SPEAK)]
+    assert spoken == [0, 60, 120]
+
+
+def test_leaving_level_4_and_returning_is_a_new_event():
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+    assert _count(_drive_critical(sm, 0.0, micro=1), ActionType.ALERT) == 1
+    _drive_critical(sm, 10.0, micro=0, level=2)
+    assert _count(_drive_critical(sm, 20.0, micro=0), ActionType.ALERT) == 1

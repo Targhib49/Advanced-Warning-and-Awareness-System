@@ -172,7 +172,10 @@ class WebcamSource(Source):
             self.last_frame = frame
             obs = self.landmarker.observe(rgb, t)
             if self.eye_model is not None and obs.face_present and obs.landmarks:
-                obs.p_closed = self.eye_model.p_closed(rgb, obs.landmarks)
+                from awas.driver.eyestate import combine
+                eyes = self.eye_model.per_eye(rgb, obs.landmarks)
+                obs.p_closed = combine(eyes)
+                obs.p_closed_eyes = tuple(None if e is None else round(e[0], 3) for e in eyes)
         self.last_obs = obs
         state = self.pipeline.process(obs, trip_t)
 
@@ -205,7 +208,8 @@ class WebcamSource(Source):
         )
 
     def set_driver(self, driver_name: str, profile_dir: Optional[Path], eye_signal: Optional[str],
-                   neutral_pose: Tuple[float, float] = (0.0, 0.0)) -> None:
+                   neutral_pose: Optional[Tuple[float, float]] = None,
+                   cnn_scale: Optional[Tuple[float, float]] = None) -> None:
         """Start a new trip for another driver, without reopening the camera.
 
         Saves what the outgoing driver's trip learned first. `profile_dir` None
@@ -215,7 +219,8 @@ class WebcamSource(Source):
         self.pipeline.save_profile()
         signal = eye_signal if (eye_signal and self.eye_model is not None) else "ear"
         self.pipeline = DriverPipeline(driver_name=driver_name, profile_dir=profile_dir,
-                                       eye_signal=signal, neutral_pose=neutral_pose)
+                                       eye_signal=signal, neutral_pose=neutral_pose,
+                                       cnn_scale=cnn_scale)
         self.sdlp_cal = SdlpCalibrator(driver_name)
         self.sdlp_baseline, self._sdlp_offered_at = None, None
         self.lane.reset()
