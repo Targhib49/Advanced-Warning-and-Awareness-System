@@ -163,8 +163,10 @@ class StateMachine:
         # A new microsleep is new evidence; a window that still remembers an
         # old one is not. Read before the level branch so the count is tracked
         # at every level.
+        # The count is over a sliding window: when old ones age out, follow it
+        # down, or the next real one would not look new.
+        self.ctx.prev_microsleeps = min(self.ctx.prev_microsleeps, t.microsleep_count)
         new_microsleep = t.microsleep_count > self.ctx.prev_microsleeps
-        self.ctx.prev_microsleeps = t.microsleep_count
 
         # A falling level is recovery, and recovery needs no commentary: on
         # the way down from 4, drive 5 heard "pull over", then "talk to me",
@@ -207,6 +209,11 @@ class StateMachine:
             if (entering or new_microsleep) and self._alert_cooldown_ok(t):
                 actions.append(self._fire_alert(t, "critical_drowsy", urgency=4))
                 self.ctx.critical_active = True
+                self.ctx.prev_microsleeps = t.microsleep_count
+            # A microsleep that lands inside the alert cooldown is not
+            # consumed: it stays "new" and sounds the moment the cooldown
+            # ends. Drive 7: closures of 4-5 s two seconds after an alarm
+            # were counted, never announced.
             # Only a SOUNDED alarm counts as having entered. If another
             # alert's cooldown held it back (drive 6: a lane alert 4.9 s
             # earlier), "entering" stays true and it sounds next update,
@@ -218,10 +225,12 @@ class StateMachine:
                 actions.append(self._fire_speak(4, "moving_critical", t))
         elif level >= 1:
             self.ctx.critical_active = False
+            self.ctx.prev_microsleeps = t.microsleep_count
             if self._intervention_allowed(level, t):
                 actions.append(self._fire_speak(level, "moving_drowsy", t))
         else:
             self.ctx.critical_active = False
+            self.ctx.prev_microsleeps = t.microsleep_count
 
         if t.distraction == Distraction.PHONE and self._alert_cooldown_ok(t):
             actions.append(self._fire_alert(t, "phone_in_hand", urgency=2))

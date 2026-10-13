@@ -9,6 +9,12 @@ speaker or a disk. Two rules it enforces that the state machine cannot:
     arriving mid-playback is dropped and the drop is recorded. Without this the
     cooldowns could still let a pleasantry truncate an emergency.
 
+  * **Speech follows an alert, it never cuts one off.** The state machine
+    emits the alarm and the conversation in the same update ("conversation
+    follows the alert"); played as they come, the second replaced the first
+    and the driver heard the speech but never the alarm (bench drive 7). A
+    speech arriving while an alert sounds waits, and plays when it ends.
+
   * **Nothing happens unlogged.** Every action is written with the telemetry
     that caused it and what actually came out of the speaker, including the
     ones that were suppressed.
@@ -36,6 +42,7 @@ class Executed:
     playback: Optional[Playback] = None
     text: str = ""
     suppressed: str = ""      # empty when it was performed
+    deferred: bool = False    # waiting for an alert to finish; logged when it plays
 
     @property
     def performed(self) -> bool:
@@ -59,6 +66,8 @@ class ActionExecutor:
 
         self._busy_until = 0.0
         self._busy_urgency = -1
+        self._busy_type: Optional[ActionType] = None
+        self._pending: Optional[tuple] = None    # (Executed, driving_state)
         self.history: List[Executed] = []
 
     def execute(
@@ -69,6 +78,10 @@ class ActionExecutor:
         driving_state: str = "",
     ) -> List[Executed]:
         out: List[Executed] = []
+        if self._pending is not None and time.monotonic() >= self._busy_until:
+            ex, state = self._pending
+            self._pending = None
+            out.append(self._play(ex, t, telemetry, state))
         for action in actions:
             out.append(self._one(action, t, telemetry, driving_state))
         return out
@@ -98,16 +111,36 @@ class ActionExecutor:
         elif self.muted:
             ex.suppressed = "muted"
         elif self._would_interrupt_something_louder(action):
+            # Less urgent than what is sounding: dropped, not saved for later —
+            # a pleasantry straight after an alarm would be worse than none.
             ex.suppressed = f"urgency {action.urgency} < playing {self._busy_urgency}"
+        elif (action.type is ActionType.SPEAK and self._busy_type is ActionType.ALERT
+              and time.monotonic() < self._busy_until):
+            if self._pending is not None:          # only the newest waits
+                old, state = self._pending
+                old.deferred, old.suppressed = False, "superseded while waiting for an alert"
+                self._record(old, t, telemetry, state)
+                self.history.append(old)
+            ex.deferred = True
+            self._pending = (ex, driving_state)
+            return ex
         else:
-            ex.playback = self.audio.play(clips)
-            if ex.playback.played:
-                now = time.monotonic()
-                self._busy_until = now + ex.playback.duration_ms / 1000.0
-                self._busy_urgency = action.urgency
-            else:
-                ex.suppressed = "clip missing from the bank"
+            return self._play(ex, t, telemetry, driving_state)
 
+        self._record(ex, t, telemetry, driving_state)
+        self.history.append(ex)
+        return ex
+
+    def _play(self, ex: Executed, t: float, telemetry, driving_state: str) -> Executed:
+        ex.deferred = False
+        ex.playback = self.audio.play(ex.clips)
+        if ex.playback.played:
+            now = time.monotonic()
+            self._busy_until = now + ex.playback.duration_ms / 1000.0
+            self._busy_urgency = ex.action.urgency
+            self._busy_type = ex.action.type
+        else:
+            ex.suppressed = "clip missing from the bank"
         self._record(ex, t, telemetry, driving_state)
         self.history.append(ex)
         return ex

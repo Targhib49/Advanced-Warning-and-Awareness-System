@@ -70,6 +70,9 @@
   #sound { position: fixed; right: 14px; top: 12px; font: 500 15px var(--mono); color: var(--muted);
            background: rgba(34,41,45,.92); border: 0; border-radius: 8px; padding: 7px 12px; display: none; z-index: 6; }
   #sound.off { color: var(--ink); background: rgba(224,169,60,.9); color: #111; }
+  /* --sim with no bridge feeding it: say so, or a demo runs on a fake speed. */
+  #game { position: fixed; left: 14px; top: 12px; font: 500 15px var(--mono); color: #111;
+          background: rgba(224,169,60,.9); border-radius: 8px; padding: 7px 12px; display: none; z-index: 6; }
 </style>
 </head>
 <body>
@@ -77,6 +80,7 @@
 <div id="setup"></div>
 <button id="switch"></button>
 <button id="sound"></button>
+<div id="game"></div>
 <div id="help">[ ] speed &nbsp; i ignition / park &nbsp; 1-9 KSS (parked) &nbsp; d switch driver (parked) &nbsp; l language &nbsp; f full screen &nbsp; s sound &nbsp; ? hide</div>
 <script type="module">
 import { drawScreen, kssButtonAt, TEXT, W, H } from "/app-screens.js";
@@ -126,6 +130,7 @@ const cm = m => Math.max(0, Math.round(m * 100));
 const SETUP = {
   id: {
     status: "AWAS · PENGATURAN", noCamera: "Kamera tidak terhubung. Periksa kabelnya.",
+    gameOff: "⚠ Tidak ada data game — jalankan AWAS bridge di laptop",
     select: "Siapa yang mengemudi?", none: "Belum ada pengemudi terdaftar.",
     ready: "siap", needsCal: "perlu kalibrasi", newDriver: "+ Pengemudi baru",
     confirmDelete: n => `Hapus ${n} beserta profil mata dan semua catatan perjalanannya?`,
@@ -168,6 +173,7 @@ const SETUP = {
   },
   en: {
     status: "AWAS · SETUP", noCamera: "Camera not connected. Check the cable.",
+    gameOff: "⚠ No game data — start the AWAS bridge on the laptop",
     select: "Who's driving?", none: "No drivers registered yet.",
     ready: "ready", needsCal: "needs calibration", newDriver: "+ New driver",
     confirmDelete: n => `Delete ${n}, their eye profile and all their trip logs?`,
@@ -275,6 +281,9 @@ function render() {
   canvas.style.display = inSetup ? "none" : "block";
   switchBtn.style.display = linkUp && !inSetup && snap.screen === "parked" && snap.can_switch_driver ? "block" : "none";
   switchBtn.textContent = L10N[lang].switchDriver;
+  const gameEl = document.getElementById("game");
+  gameEl.style.display = linkUp && snap.game === "off" ? "block" : "none";
+  gameEl.textContent = SETUP[lang].gameOff;
   if (inSetup) { renderSetup(snap); return; }
   setupSig = "";            // rebuild the setup screen next time it appears
   stopCamera();

@@ -321,6 +321,14 @@ def main() -> None:
     held = {"reason": None, "t": -1e9}
     kss_given = None
     sim_noted = streamed_at = -1e9
+
+    def game_link():
+        """With --sim, whether the bridge is feeding us: a demo driven with
+        no game data runs on the manual speed, and nothing on screen said so
+        (bench drive 7). None when there is no simulator to expect."""
+        if road is None or not hasattr(road, "connected"):
+            return None
+        return "on" if road.connected else "off"
     camera_was_ok = True          # so a camera missing at start is announced too
     if args.dashboard:
         from awas.display.server import DisplayServer
@@ -436,6 +444,7 @@ def main() -> None:
                         display.publish_frame(jpg.tobytes())
                 snap = flow.snapshot()
                 snap["camera_ok"] = src.camera_ok
+                snap["game"] = game_link()
                 display.publish(snap)
                 continue
 
@@ -466,7 +475,9 @@ def main() -> None:
             )
             for ex_ in performed:
                 detail = ex_.text or ex_.action.message
-                if ex_.suppressed:
+                if ex_.deferred:
+                    detail = f"[after the alert] {detail}"
+                elif ex_.suppressed:
                     detail = f"[{ex_.suppressed}] {detail}"
                 elif ex_.playback:
                     detail = f"({ex_.playback.latency_ms:.0f}ms) {detail}"
@@ -476,7 +487,7 @@ def main() -> None:
                 if display:
                     if is_display_worthy(ex_.suppressed):
                         held = {"reason": ex_.suppressed, "t": telemetry.timestamp}
-                    elif ex_.action.type in (ActionType.ALERT, ActionType.SPEAK):
+                    elif ex_.action.type in (ActionType.ALERT, ActionType.SPEAK) and not ex_.deferred:
                         trip.note_alert()
 
             if session:
@@ -501,6 +512,7 @@ def main() -> None:
                 snap["mode"] = "driving"
                 snap["driver"] = flow.driver.name if flow and flow.driver else None
                 snap["can_switch_driver"] = flow is not None
+                snap["game"] = game_link()
                 display.publish(snap)
 
             if road is not None and telemetry.timestamp - sim_noted >= 10.0:
