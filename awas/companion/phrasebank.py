@@ -28,11 +28,12 @@ ALERTS: Dict[str, str] = {
     "green_light_unresponsive": "Light is green.",
     "traffic_moving":           "Traffic is moving.",
     "monitoring_lost":          "AWAS is not monitoring.",
+    "face_not_seen":            "I can't see your eyes. Head up, eyes on the road.",
 }
 
 # Alerts that get a rising alarm tone in front of the words. Reserved for the
-# two cases where a driver may be too far gone to parse speech immediately.
-ALERTS_WITH_TONE = {"critical_drowsy", "lane_departure"}
+# cases where a driver may be too far gone to parse speech immediately.
+ALERTS_WITH_TONE = {"critical_drowsy", "lane_departure", "face_not_seen"}
 
 # --- Conversational templates, several per intent.
 # Several because a driver who hears the same sentence every time stops hearing

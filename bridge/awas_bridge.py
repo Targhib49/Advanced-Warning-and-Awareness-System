@@ -171,6 +171,7 @@ class ScreenCapture:
         self.mss = mss.mss()
         self.mode, self.title, self.monitor, self.region = mode, title, monitor, region
         self._rect, self._found_at, self._warned = None, 0.0, False
+        self._mac_window = None      # (window id, title bar height) of the game, macOS
         if sys.platform == "win32":
             try:   # physical pixels, so window rectangles match what mss grabs
                 import ctypes
@@ -218,28 +219,68 @@ class ScreenCapture:
         # windowed at the normal one (0). Its small menu-bar strips are
         # dropped by size below.
         wins = [w for w in infos
-                if self.title.lower() in str(w.get("kCGWindowOwnerName", "")).lower()]
-        bounds = [w["kCGWindowBounds"] for w in wins]
-        bounds = [b for b in bounds if b["Width"] > 200 and b["Height"] > 200]
-        if not bounds:
+                if self.title.lower() in str(w.get("kCGWindowOwnerName", "")).lower()
+                and w["kCGWindowBounds"]["Width"] > 200 and w["kCGWindowBounds"]["Height"] > 200]
+        if not wins:
             if not self._warned:
                 print(f"capture: no '{self.title}' window yet; capturing the monitor",
                       file=sys.stderr)
                 self._warned = True
-            self._rect = None
+            self._rect, self._mac_window = None, None
             return None
         self._warned = False
-        b = max(bounds, key=lambda b: b["Width"] * b["Height"])
+        win = max(wins, key=lambda w: w["kCGWindowBounds"]["Width"] * w["kCGWindowBounds"]["Height"])
+        b = win["kCGWindowBounds"]
         x, y, w, h = int(b["X"]), int(b["Y"]), int(b["Width"]), int(b["Height"])
         # Points, as mss expects on macOS. A windowed game has a title bar; a
         # full-screen one is exactly a monitor's size and has none.
         full = any(m["width"] == w and m["height"] == h for m in self.mss.monitors[1:])
         bar = 0 if full else 28
-        self._rect = {"left": x, "top": y + bar, "width": w, "height": max(1, h - bar)}
+        self._mac_window = (win["kCGWindowNumber"], bar)
+        y, h = y + bar, h - bar
+        # Only the part on a screen exists to capture: a window may be sized
+        # past the bottom edge (ETS2 picks its own size when switched to
+        # windowed). Clip to the monitor holding the window's centre.
+        cx, cy = x + w / 2, y + h / 2
+        mon = next((m for m in self.mss.monitors[1:]
+                    if m["left"] <= cx < m["left"] + m["width"]
+                    and m["top"] <= cy < m["top"] + m["height"]), self.mss.monitors[1])
+        x0, y0 = max(x, mon["left"]), max(y, mon["top"])
+        x1 = min(x + w, mon["left"] + mon["width"])
+        y1 = min(y + h, mon["top"] + mon["height"])
+        if x1 - x0 < 200 or y1 - y0 < 200:
+            self._rect = None
+            return None
+        self._rect = {"left": x0, "top": y0, "width": x1 - x0, "height": y1 - y0}
         return self._rect
+
+    def _mac_grab_window(self):
+        """Just the game window's pixels, even where another window covers it
+        (the dashboard beside it, say) — and never any other app's."""
+        try:
+            import Quartz
+            import numpy as np
+            wid, bar = self._mac_window
+            img = Quartz.CGWindowListCreateImage(
+                Quartz.CGRectNull, Quartz.kCGWindowListOptionIncludingWindow, wid,
+                Quartz.kCGWindowImageBoundsIgnoreFraming | Quartz.kCGWindowImageNominalResolution)
+            if img is None:
+                return None
+            w, h = Quartz.CGImageGetWidth(img), Quartz.CGImageGetHeight(img)
+            row = Quartz.CGImageGetBytesPerRow(img)
+            data = Quartz.CGDataProviderCopyData(Quartz.CGImageGetDataProvider(img))
+            px = np.frombuffer(data, np.uint8).reshape(h, row // 4, 4)[:, :w, :3]
+            return np.ascontiguousarray(px[bar:])            # BGRA -> BGR, no title bar
+        except Exception:
+            return None
 
     def grab(self):
         import numpy as np
+        if (not self.region and self.mode == "window" and sys.platform == "darwin"
+                and self._window_rect() and self._mac_window):
+            frame = self._mac_grab_window()
+            if frame is not None and frame.size:
+                return frame
         if self.region:
             box = dict(zip(("left", "top", "width", "height"), self.region))
         elif self.mode == "window" and sys.platform in ("win32", "darwin") and self._window_rect():

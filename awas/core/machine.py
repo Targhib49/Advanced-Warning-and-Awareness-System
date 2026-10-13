@@ -166,6 +166,34 @@ class StateMachine:
         new_microsleep = t.microsleep_count > self.ctx.prev_microsleeps
         self.ctx.prev_microsleeps = t.microsleep_count
 
+        # A falling level is recovery, and recovery needs no commentary: on
+        # the way down from 4, drive 5 heard "pull over", then "talk to me",
+        # then "how are you feeling" from a driver already awake. A fall
+        # counts as having just spoken at every level below, so each lower
+        # level speaks only if it then HOLDS for its own cooldown — a driver
+        # still drowsy at 3 a while later hears about it; one passing through
+        # does not.
+        if level < self.ctx.prev_level:
+            for lower in range(1, self.ctx.prev_level):
+                self.ctx.last_intervention_at[lower] = t.timestamp
+        self.ctx.prev_level = level
+
+        # The face gone while moving is the one case the eyes cannot report
+        # on: a head dropped forward, or a driver turned right round. Say so
+        # once per disappearance, with the tone — a dropped head may be asleep.
+        lost_for = self._face_lost_for(t)
+        if self.ctx.last_reversing_at is not None:
+            # Time spent looking back to reverse does not count: the clock
+            # starts when the manoeuvre's hold ends.
+            since_manoeuvre = t.timestamp - self.ctx.last_reversing_at - self.cfg.reverse_hold_sec
+            lost_for = min(lost_for, since_manoeuvre)
+        if lost_for < self.cfg.face_lost_warn_sec:
+            if t.face_present:
+                self.ctx.face_lost_warned = False
+        elif not self.ctx.face_lost_warned and self._alert_cooldown_ok(t):
+            actions.append(self._fire_alert(t, "face_not_seen", urgency=3))
+            self.ctx.face_lost_warned = True
+
         if level >= 4:
             # Reflex path only. Never generated, never gated by workload.
             #

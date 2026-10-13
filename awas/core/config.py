@@ -48,6 +48,10 @@ class StateMachineConfig:
     # --- degradation ladder (plan §5.4) ---
     face_lost_grace_sec: float = 10.0
     face_lost_level_cap: int = 3
+    # Face gone this long while moving: one spoken warning per disappearance.
+    # A head dropped onto the chest takes the face out of view, and that is
+    # the nod-off the eye signals then cannot see (bench drive 5). UNFITTED.
+    face_lost_warn_sec: float = 5.0
 
     # --- jam nudge ---
     jam_gap_open_m: float = 8.0

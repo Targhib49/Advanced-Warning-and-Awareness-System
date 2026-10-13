@@ -55,7 +55,7 @@ class TestPhraseBank:
         """A state machine alert_id with no phrase would be a silent warning."""
         emitted = {
             "critical_drowsy", "phone_in_hand", "lane_departure",
-            "green_light_unresponsive", "traffic_moving",
+            "green_light_unresponsive", "traffic_moving", "face_not_seen",
         }
         assert emitted <= set(ALERTS)
 

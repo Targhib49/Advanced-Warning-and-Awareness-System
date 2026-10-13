@@ -428,6 +428,10 @@ def main() -> None:
                 continue
 
             actions = sm.update(telemetry)
+            if not src.camera_ok:
+                # No camera is not "no face": it has its own alert below, and
+                # "I can't see your eyes" would be the wrong thing to say.
+                actions = [a for a in actions if a.alert_id != "face_not_seen"]
 
             # Losing the camera is a monitoring failure the driver must hear
             # about once, not a silent stretch of "no face" (plan §5.4).

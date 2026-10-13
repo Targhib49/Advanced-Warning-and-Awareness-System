@@ -39,3 +39,8 @@ class StateContext:
     # count of the previous update (a rise is a new microsleep).
     critical_active: bool = False
     prev_microsleeps: int = 0
+
+    # The level acted on at the previous update, to tell a falling level
+    # (recovery) from a steady one; and whether this face loss was warned of.
+    prev_level: int = 0
+    face_lost_warned: bool = False

@@ -261,7 +261,10 @@ class TestFaceLost:
               face_present=True)
         actions = drive(sm, timestamp=20.0, ignition_on=True, speed_kmh=30.0,
                         drowsiness_level=4, face_present=False)
-        assert not has_type(actions, ActionType.ALERT)
+        # The only alert is that the face is gone (bench drive 5), never the
+        # critical one.
+        alerts = [a.alert_id for a in of_type(actions, ActionType.ALERT)]
+        assert alerts == ["face_not_seen"]
         assert of_type(actions, ActionType.SPEAK)[0].intent is Intent.INSIST
 
     def test_face_lost_within_grace_still_acts_at_full_strength(self):
