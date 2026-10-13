@@ -32,6 +32,15 @@ import numpy as np
 Point = Tuple[float, float]
 
 
+def mask(frame: np.ndarray, boxes) -> np.ndarray:
+    """A copy of `frame` with each fractional box set to black."""
+    out = frame.copy()
+    h, w = out.shape[:2]
+    for x0, y0, x1, y1 in boxes:
+        out[int(y0 * h):int(round(y1 * h)), int(x0 * w):int(round(x1 * w))] = 0
+    return out
+
+
 @dataclass(frozen=True)
 class LaneCalibration:
     """Camera geometry. Depends on where the camera is mounted and aimed.
@@ -63,6 +72,13 @@ class LaneCalibration:
     # not a strange road.
     min_lane_px: int = 60
     max_lane_px: int = 300
+
+    # Regions blanked before detection, as (x0, y0, x1, y1) fractions of the
+    # frame: overlays that sit on the road in the image, such as a
+    # simulator's speedometer and route advisor, whose bright edges would
+    # otherwise be read as lane paint. Part of the calibration because they
+    # belong to one view, as the trapezoid does.
+    mask_boxes: Tuple[Tuple[float, float, float, float], ...] = ()
 
     def src_points(self) -> np.ndarray:
         w, h = self.width, self.height
@@ -171,6 +187,8 @@ class LaneDetector:
 
     def detect(self, frame: np.ndarray, keep_binary: bool = False) -> LaneDetection:
         cal = self.cal
+        if cal.mask_boxes:
+            frame = mask(frame, cal.mask_boxes)
         warped = self.warp(frame)
         binary = self.threshold(warped)
         keep = binary if keep_binary else None

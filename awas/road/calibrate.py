@@ -32,7 +32,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from awas.road.lane_detect import LaneCalibration, LaneDetector
+from awas.road.lane_detect import LaneCalibration, LaneDetector, mask
 
 
 @dataclass
@@ -230,18 +230,22 @@ def auto_calibrate(
     frames: Sequence[np.ndarray],
     lane_width_m: float = 3.5,
     verbose: bool = False,
+    mask_boxes: tuple = (),
 ) -> Tuple[LaneCalibration, CalibrationScore]:
     """Vanishing point for a starting guess, then search for what works."""
     if not frames:
         raise ValueError("auto_calibrate needs at least one frame")
 
     h, w = frames[0].shape[:2]
-    start = LaneCalibration(width=w, height=h, lane_width_m=lane_width_m)
+    start = LaneCalibration(width=w, height=h, lane_width_m=lane_width_m,
+                            mask_boxes=tuple(mask_boxes))
+    if mask_boxes:
+        frames = [mask(f, mask_boxes) for f in frames]
 
     vp = find_vanishing_point(frames)
     if vp is not None:
         start = calibration_from_vanishing_point(vp, w, h, start)
-        start = replace(start, lane_width_m=lane_width_m)
+        start = replace(start, lane_width_m=lane_width_m, mask_boxes=tuple(mask_boxes))
         if verbose:
             print(f"  vanishing point at ({vp[0]:.0f}, {vp[1]:.0f}) "
                   f"-> horizon {vp[1] / h:.2f}, top_y {start.top_y:.2f}")
@@ -262,6 +266,8 @@ def save(cal: LaneCalibration, path: Path) -> Path:
 
 def load(path: Path) -> Optional[LaneCalibration]:
     try:
-        return LaneCalibration(**json.loads(Path(path).read_text()))
-    except (OSError, json.JSONDecodeError, TypeError):
+        raw = json.loads(Path(path).read_text())
+        raw["mask_boxes"] = tuple(tuple(b) for b in raw.get("mask_boxes", ()))
+        return LaneCalibration(**raw)
+    except (OSError, json.JSONDecodeError, TypeError, AttributeError):
         return None

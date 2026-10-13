@@ -1,0 +1,28 @@
+{
+  "width": 640,
+  "height": 418,
+  "top_y": 0.5796810207336524,
+  "bottom_y": 0.96,
+  "top_half_width": 0.17,
+  "bottom_half_width": 0.9,
+  "warp_width": 320,
+  "warp_height": 480,
+  "warp_margin": 0.25,
+  "lane_width_m": 3.5,
+  "min_lane_px": 60,
+  "max_lane_px": 300,
+  "mask_boxes": [
+    [
+      0.0,
+      0.77,
+      0.14,
+      1.0
+    ],
+    [
+      0.785,
+      0.51,
+      1.0,
+      1.0
+    ]
+  ]
+}

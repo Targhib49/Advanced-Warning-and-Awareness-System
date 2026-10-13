@@ -103,6 +103,9 @@ def main() -> None:
     ap.add_argument("--save", action="store_true", help=f"write {DEFAULT_OUT}")
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     ap.add_argument("--overlay", default="artifacts/lane_calibration.png")
+    ap.add_argument("--mask", action="append", default=[], metavar="X0,Y0,X1,Y1",
+                    help="blank this box (fractions of the frame) before detection, e.g. a "
+                         "simulator's speedometer; repeat for several")
     ap.add_argument("--self-test", action="store_true",
                     help="prove the calibrator on synthetic footage")
     args = ap.parse_args()
@@ -125,6 +128,9 @@ def main() -> None:
     if not args.video:
         ap.error("give --video with real footage, or --self-test")
 
+    boxes = tuple(tuple(float(v) for v in m.split(",")) for m in args.mask)
+    if any(len(b) != 4 for b in boxes):
+        ap.error("--mask takes four fractions: x0,y0,x1,y1")
     frames = sample_video(args.video, args.frames)
     h, w = frames[0].shape[:2]
     print(f"{len(frames)} frames sampled from {args.video} ({w}x{h})\n")
@@ -132,9 +138,9 @@ def main() -> None:
     vp = find_vanishing_point(frames)
     print(f"  vanishing point   {f'({vp[0]:.0f}, {vp[1]:.0f}), horizon at {vp[1]/h:.2f}' if vp else 'not found'}")
 
-    report("default trapezoid", LaneCalibration(width=w, height=h,
-                                                lane_width_m=args.lane_width), frames)
-    best, sc = auto_calibrate(frames, args.lane_width, verbose=False)
+    report("default trapezoid", LaneCalibration(width=w, height=h, lane_width_m=args.lane_width,
+                                                mask_boxes=boxes), frames)
+    best, sc = auto_calibrate(frames, args.lane_width, verbose=False, mask_boxes=boxes)
     report("after calibration", best, frames)
 
     print(f"\n  top_y              {best.top_y:.3f}")
