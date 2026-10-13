@@ -31,6 +31,7 @@ def choose_screen(
     held_reason: Optional[str] = None,
     lane_available: bool = False,
     camera_ok: bool = True,
+    manoeuvring: bool = False,
 ) -> str:
     """Pick the screen key. Order matters: safety outranks bookkeeping.
 
@@ -43,6 +44,9 @@ def choose_screen(
         return "nocamera"
     if driving_state in PARKED_STATES:
         return "parked"
+    if manoeuvring:
+        # The state machine is deliberately quiet; say so (plan §5.4).
+        return "reversing"
     if level >= 4:
         return "critical"
     if not face_present:
@@ -135,6 +139,7 @@ def snapshot(
     sdlp_baseline_m: Optional[float] = None,
     fused=None,                   # awas.fusion.core.FusedEstimate
     camera_ok: bool = True,
+    manoeuvring: bool = False,
 ) -> Dict:
     """Everything the page needs, as plain JSON."""
     now = time.time() if now is None else now
@@ -142,7 +147,8 @@ def snapshot(
     return {
         "screen": choose_screen(driving_state, level, driver.face_present,
                                 driver.calibrating, held_reason, lane_available,
-                                camera_ok),
+                                camera_ok, manoeuvring),
+        "manoeuvring": manoeuvring,
         "camera_ok": camera_ok,
         "level": level,
         "clock": _hhmm(now),

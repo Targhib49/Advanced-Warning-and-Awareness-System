@@ -70,6 +70,15 @@ class Ets2Telemetry:
             "engine_on": bool(d.get("engineEnabled", False)),
             "paused": bool(d.get("paused", False)),
             "speed_limit_kmh": round(limit, 1) if limit > 1 else None,
+            # SCS SDK truck.engine.gear: <0 reverse, 0 neutral, >0 forward. The
+            # driver is looking back while reversing, so AWAS pauses its
+            # face-based alerts.
+            "gear": int(d.get("gear", 0)),
+            # "Active" is the SDK's truck.lblinker: true for as long as the
+            # stalk is set, without blinking — what "signalled" means. ("On" is
+            # truck.light.lblinker, the lamp itself, which flashes.)
+            "blinker_left": bool(d.get("blinkerLeftActive", False)),
+            "blinker_right": bool(d.get("blinkerRightActive", False)),
         }
 
 
@@ -87,6 +96,7 @@ class MockTelemetry:
             "speed_kmh": round(80 + 4 * math.sin(t / 20), 2),
             "steer": round(0.02 * math.sin(t / 3) + self.rng.gauss(0, 0.004), 4),
             "engine_on": True, "paused": False, "speed_limit_kmh": 90.0,
+            "gear": 6, "blinker_left": False, "blinker_right": False,
         }
 
     def lane_offset(self) -> float:
@@ -305,7 +315,10 @@ def _readout(sent, tel, ack, frame_bytes, now, source) -> None:
         game = ("waiting for ETS2 — is the game running, and was the SDK dialog accepted?"
                 if source == "ets2" else "no telemetry")
     else:
+        gear = tel.get("gear", 0)
+        signal = "<" if tel.get("blinker_left") else ">" if tel.get("blinker_right") else "-"
         game = (f"{tel['speed_kmh']:5.1f} km/h  steer {tel['steer']:+.2f}  "
+                f"gear {'R' if gear < 0 else gear}  signal {signal}  "
                 f"engine {'on ' if tel['engine_on'] else 'off'}{'  PAUSED' if tel['paused'] else ''}")
     if ack is None or now - ack[0] > 3:
         pi = "Pi: no reply yet (is AWAS running with --sim?)"

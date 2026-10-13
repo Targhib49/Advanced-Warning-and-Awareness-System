@@ -61,6 +61,9 @@ class SimTelemetry:
     paused: bool = False
     speed_limit_kmh: Optional[float] = None
     source: str = "ets2"
+    gear: Optional[int] = None       # SCS: <0 reverse; None from an older bridge
+    blinker_left: bool = False
+    blinker_right: bool = False
 
     @classmethod
     def from_json(cls, raw: bytes) -> "SimTelemetry":
@@ -68,6 +71,7 @@ class SimTelemetry:
         if not isinstance(d, dict):
             raise ValueError("telemetry must be a JSON object")
         limit = d.get("speed_limit_kmh")
+        gear = d.get("gear")
         return cls(
             speed_kmh=abs(float(d.get("speed_kmh", 0.0))),
             steer=max(-1.0, min(1.0, float(d.get("steer", 0.0)))),
@@ -75,7 +79,16 @@ class SimTelemetry:
             paused=bool(d.get("paused", False)),
             speed_limit_kmh=float(limit) if limit else None,
             source=str(d.get("source", "ets2"))[:16],
+            gear=int(gear) if gear is not None else None,
+            blinker_left=bool(d.get("blinker_left", False)),
+            blinker_right=bool(d.get("blinker_right", False)),
         )
+
+    @property
+    def turn_signal(self) -> Optional[str]:
+        if self.blinker_left and self.blinker_right:
+            return None                  # hazards, not a lane change
+        return "left" if self.blinker_left else "right" if self.blinker_right else None
 
 
 class SimRoadSource:
@@ -193,10 +206,14 @@ class SimRoadSource:
             t=t, speed_kmh=speed, speed_source="sim",
             steering_angle_deg=tel.steer * self.cfg.steering_range_deg / 2.0,
             speed_limit_kmh=tel.speed_limit_kmh,
+            reversing=(tel.gear < 0) if tel.gear is not None else None,
+            turn_signal=tel.turn_signal,
         )
 
         # Only the newest frame matters; older ones were superseded in flight.
-        if frame is not None and seq != self._used_seq and not tel.paused:
+        # Reversing, the forward view says nothing about lane keeping: keep it
+        # out of SDLP rather than let a yard manoeuvre read as weaving.
+        if frame is not None and seq != self._used_seq and not tel.paused and not state.reversing:
             self._used_seq = seq
             image = _decode(frame, self.camera.detector.cal)
             if image is not None:

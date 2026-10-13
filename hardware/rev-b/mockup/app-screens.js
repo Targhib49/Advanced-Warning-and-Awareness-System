@@ -34,6 +34,7 @@ export const SCREENS = {
   calibrating: { band: SLATE, level: -1, bothChannels: true, progress: true },
   noface:      { band: SLATE, level: -1, bothChannels: false, note: true },
   nocamera:    { band: ORANGE, level: -1, bothChannels: false, note: true },
+  reversing:   { band: SLATE, level: -1, bothChannels: true },
 };
 
 // Every string on screen. Indonesian uses a decimal comma.
@@ -58,6 +59,7 @@ export const TEXT = {
     calibrating: { word: "KALIBRASI", line: "Mengemudi seperti biasa. Saya sedang mempelajari mata Anda.", foot: [] },
     noface: { word: "TAK TERLIHAT", line: "Kamera tidak melihat mata Anda.", note: "Periksa kamera dan posisi duduk.", foot: [] },
     nocamera: { word: "TANPA KAMERA", line: "Kamera tidak terhubung. Mata Anda tidak dipantau.", note: "Periksa kabel kamera.", foot: [] },
+    reversing: { word: "MUNDUR", line: "Peringatan kantuk dijeda saat mundur.", foot: [] },
     noChannel: "TANPA SENSOR",
   },
   en: {
@@ -80,13 +82,15 @@ export const TEXT = {
     calibrating: { word: "CALIBRATING", line: "Drive as usual. Learning your eyes.", foot: [] },
     noface: { word: "CAN'T SEE YOU", line: "The camera can't see your eyes.", note: "Check the camera and your seating position.", foot: [] },
     nocamera: { word: "NO CAMERA", line: "Camera not connected. Your eyes are not being monitored.", note: "Check the camera cable.", foot: [] },
+    reversing: { word: "REVERSING", line: "Drowsiness alerts are paused while reversing.", foot: [] },
     noChannel: "NO SENSORS",
   },
 };
 
 // Light-bar colour on the device for each screen.
 export const LIGHT = { monitoring: GREEN, engaging: AMBER, gate: ORANGE, occluded: SLATE, critical: RED, parked: GREEN,
-                       tired: AMBER, insist: ORANGE, calibrating: SLATE, noface: SLATE, nocamera: ORANGE };
+                       tired: AMBER, insist: ORANGE, calibrating: SLATE, noface: SLATE, nocamera: ORANGE,
+                       reversing: SLATE };
 
 function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
 function t(c, s, x, y, font, color, align = "left", base = "alphabetic") {

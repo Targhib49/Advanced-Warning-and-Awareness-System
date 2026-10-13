@@ -87,6 +87,18 @@ class StateMachine:
         elif self.ctx.face_last_seen_at is None:
             self.ctx.face_last_seen_at = t.timestamp
 
+        if t.reversing:
+            self.ctx.last_reversing_at = t.timestamp
+
+    def manoeuvring(self, t: Telemetry) -> bool:
+        """Reversing, or just finished: the driver is meant to be looking back.
+
+        Only a source that knows the gear can say so (the simulator today,
+        OBD-II later); without one this is never true.
+        """
+        last = self.ctx.last_reversing_at
+        return last is not None and t.timestamp - last <= self.cfg.reverse_hold_sec
+
     # ---------------- transitions ----------------
 
     def _next_state(self, t: Telemetry) -> DrivingState:
@@ -141,6 +153,11 @@ class StateMachine:
 
     def _moving_actions(self, t: Telemetry) -> List[Action]:
         actions: List[Action] = []
+        if self.manoeuvring(t):
+            # Looking over a shoulder while reversing is the job, not a lapse,
+            # and the forward lane says nothing in reverse. Stay quiet; the
+            # display says monitoring is paused rather than leave it a mystery.
+            return actions
         level = self.effective_level(t)
 
         if level >= 4:

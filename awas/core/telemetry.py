@@ -55,6 +55,8 @@ class Telemetry:
     speed_source: str = "gps"        # "obd" | "gps" | "sim" | "mock"
     parking_brake: Optional[bool] = None   # None => OBD-II unavailable (plan §7.4)
     ignition_on: bool = False
+    reversing: bool = False          # only a source that knows the gear can say so
+    turn_signal: Optional[str] = None  # "left" | "right" | None (or unknown)
 
     # --- Layer 2: vehicle behaviour, drowsiness evidence (plan §4.3) ---
     sdlp: Optional[float] = None            # std-dev of lane position, metres

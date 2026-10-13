@@ -30,8 +30,13 @@ from typing import List, Optional
 class GuidedConfig:
     # position
     min_eye_px: float = 18.0          # corner-to-corner; below this the CNN crop is mush
-    max_yaw_deg: float = 15.0
-    max_pitch_deg: float = 15.0
+    # Generous on purpose: the device sits left of the wheel (plan §7.5), so a
+    # driver looking at the road is already turned 20-30 degrees from the
+    # camera. "Facing" here means the camera has the face, not that the driver
+    # stares into it. The pose they hold while looking ahead is recorded as
+    # their neutral (GuidedResult.neutral_*), and driving is judged against it.
+    max_yaw_deg: float = 35.0
+    max_pitch_deg: float = 30.0
     min_brightness: float = 45.0      # mean gray around the eyes, 0-255
     max_brightness: float = 225.0
     hold_sec: float = 2.0             # all checks passing this long to move on
@@ -77,6 +82,10 @@ class GuidedResult:
     cnn_accuracy: Optional[float] = None
     open_frames: int = 0
     closed_frames: int = 0
+    # Head pose while looking at the road: the driver's "eyes on the road"
+    # direction, relative to wherever the camera happens to be mounted.
+    neutral_yaw: Optional[float] = None
+    neutral_pitch: Optional[float] = None
 
     def summary(self) -> dict:
         return {k: (round(v, 4) if isinstance(v, float) else v)
@@ -189,7 +198,9 @@ class GuidedCalibration:
         closed_ear = statistics.median(x.ear for x in self._closed)
         sep = (open_ear - closed_ear) / open_ear if open_ear > 0 else 0.0
         r = GuidedResult(ok=False, open_ear=open_ear, closed_ear=closed_ear, ear_separation=sep,
-                         open_frames=len(self._open), closed_frames=len(self._closed))
+                         open_frames=len(self._open), closed_frames=len(self._closed),
+                         neutral_yaw=statistics.median(x.yaw for x in self._open),
+                         neutral_pitch=statistics.median(x.pitch for x in self._open))
 
         po = [x.p_closed for x in self._open if x.p_closed is not None]
         pc = [x.p_closed for x in self._closed if x.p_closed is not None]

@@ -336,7 +336,9 @@ def main() -> None:
         nonlocal sm, trip, session, held, kss_given
         for kind, driver in events:
             if kind == "drive":
-                src.set_driver(driver.id, profiles_dir, driver.eye_signal)
+                cal = driver.calibration or {}
+                neutral = (cal.get("neutral_yaw") or 0.0, cal.get("neutral_pitch") or 0.0)
+                src.set_driver(driver.id, profiles_dir, driver.eye_signal, neutral_pose=neutral)
                 sm = StateMachine(initial_state=DrivingState.MOVING)
                 trip, held, kss_given = TripTracker(), {"reason": None, "t": -1e9}, None
                 session = new_session(driver.id, driver.eye_signal if eye_model else "ear")
@@ -448,6 +450,7 @@ def main() -> None:
                     sdlp_baseline_m=src.sdlp_baseline.baseline_m if src.sdlp_baseline else None,
                     fused=src.last_fused,
                     camera_ok=src.camera_ok,
+                    manoeuvring=sm.manoeuvring(telemetry),
                 )
                 snap["mode"] = "driving"
                 snap["driver"] = flow.driver.name if flow and flow.driver else None

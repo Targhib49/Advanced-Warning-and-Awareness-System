@@ -204,7 +204,8 @@ class WebcamSource(Source):
             fused=self.last_fused,
         )
 
-    def set_driver(self, driver_name: str, profile_dir: Optional[Path], eye_signal: Optional[str]) -> None:
+    def set_driver(self, driver_name: str, profile_dir: Optional[Path], eye_signal: Optional[str],
+                   neutral_pose: Tuple[float, float] = (0.0, 0.0)) -> None:
         """Start a new trip for another driver, without reopening the camera.
 
         Saves what the outgoing driver's trip learned first. `profile_dir` None
@@ -214,7 +215,7 @@ class WebcamSource(Source):
         self.pipeline.save_profile()
         signal = eye_signal if (eye_signal and self.eye_model is not None) else "ear"
         self.pipeline = DriverPipeline(driver_name=driver_name, profile_dir=profile_dir,
-                                       eye_signal=signal)
+                                       eye_signal=signal, neutral_pose=neutral_pose)
         self.sdlp_cal = SdlpCalibrator(driver_name)
         self.sdlp_baseline, self._sdlp_offered_at = None, None
         self.lane.reset()

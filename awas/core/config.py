@@ -16,6 +16,9 @@ class StateMachineConfig:
     traffic_jam_after_sec: float = 30.0
     light_to_jam_sec: float = 120.0
     shutdown_after_off_sec: float = 30.0
+    # Manoeuvring: reversing, and this long after, the driver is looking back
+    # on purpose, so face-based interventions pause. UNFITTED.
+    reverse_hold_sec: float = 5.0
 
     # --- cooldowns (plan §5.2) ---
     alert_cooldown_sec: float = 5.0

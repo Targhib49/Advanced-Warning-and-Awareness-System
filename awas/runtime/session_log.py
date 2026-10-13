@@ -103,6 +103,7 @@ class SessionLog:
             # Both eye signals on the same frame: the CNN-versus-EAR comparison
             # the architecture asks for comes straight out of these.
             "eye_source": getattr(state, "eye_source", None),
+            "eyes_observable": getattr(state, "eyes_observable", None),
             "p_closed": _round(getattr(state, "p_closed", None), 3),
             "ear_openness": _round(getattr(state, "ear_openness", None), 3),
         }
@@ -113,6 +114,8 @@ class SessionLog:
             rec["sdlp"] = _round(getattr(telemetry, "sdlp", None), 4)
             rec["steering_reversals"] = _round(getattr(telemetry, "steering_reversal_rate", None), 2)
             rec["lane_departure"] = getattr(telemetry, "lane_departure", None)
+            rec["reversing"] = getattr(telemetry, "reversing", None)
+            rec["turn_signal"] = getattr(telemetry, "turn_signal", None)
         if fused is not None:
             # `level` above is the facial channel; this is what was acted on.
             rec["fused_level"] = getattr(fused, "level", None)

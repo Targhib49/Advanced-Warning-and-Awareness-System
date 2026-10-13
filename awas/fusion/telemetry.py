@@ -91,6 +91,8 @@ def build_telemetry(
         sdlp=lane.sdlp if lane else None,
         steering_reversal_rate=lane.steering_reversal_rate if lane else None,
         lane_departure=road.lane_departure,
+        reversing=bool(road.reversing),
+        turn_signal=road.turn_signal,
 
         # road context
         traffic_light_color=road.traffic_light_color,

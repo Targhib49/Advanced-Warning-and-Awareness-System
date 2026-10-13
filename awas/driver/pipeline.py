@@ -65,6 +65,9 @@ class DriverState:
     # Whether the feature window holds enough observation to judge. The
     # pipeline sets it; a hand-built state is taken as usable, as before.
     window_usable: bool = True
+    # Face found but turned away from road-facing (mirror, shoulder check):
+    # the driver is present, their eyes are not measurable this frame.
+    eyes_observable: bool = True
 
     # Carried through for the debug overlay only; nothing downstream reads it.
     landmarks: list = field(default_factory=list)
@@ -84,6 +87,9 @@ class DriverPipeline:
         update_hz: float = 1.0,
         eye_signal: str = "cnn",
         cnn_confidence: float = 0.80,
+        neutral_pose: tuple = (0.0, 0.0),
+        max_eye_yaw_deg: float = 25.0,
+        max_eye_pitch_deg: float = 20.0,
     ):
         """`eye_signal`: "cnn" uses T1's P(closed) whenever a frame has one and
         falls back to EAR when it does not; "ear" is the v2 path, kept as the
@@ -93,11 +99,22 @@ class DriverPipeline:
         CNN is driving. It is UNFITTED: the model scored 98.6% on unseen MRL
         subjects, but MRL is infrared and a cabin camera in daylight is not, so
         it starts below that until it is measured on cabin footage.
+
+        `neutral_pose` is (yaw, pitch) while this driver looks at the road,
+        from guided calibration. A frame whose head pose is further from it
+        than `max_eye_yaw_deg` / `max_eye_pitch_deg` (UNFITTED) is a mirror
+        check, a shoulder check, a look down at the instruments: the driver is
+        there, but their eyes cannot be measured — EAR foreshortens and the eye
+        crop turns to profile. Such frames are left out of drowsiness exactly
+        like frames with no face, rather than read as drooping lids.
         """
         if eye_signal not in ("cnn", "ear"):
             raise ValueError(f"eye_signal must be 'cnn' or 'ear', got {eye_signal!r}")
         self.eye_signal = eye_signal
         self.cnn_confidence = cnn_confidence
+        self.neutral_yaw, self.neutral_pitch = neutral_pose
+        self.max_eye_yaw_deg = max_eye_yaw_deg
+        self.max_eye_pitch_deg = max_eye_pitch_deg
         self.driver_name = driver_name
         self.profile_dir = Path(profile_dir) if profile_dir else None
         self.cal_cfg = cal_cfg or CalibrationConfig()
@@ -122,8 +139,15 @@ class DriverPipeline:
 
     # ---------------- main entry ----------------
 
+    def eyes_observable(self, obs: FaceObservation) -> bool:
+        """Face found AND turned no further than the limits from road-facing."""
+        return (obs.face_present
+                and abs(obs.yaw_deg - self.neutral_yaw) <= self.max_eye_yaw_deg
+                and abs(obs.pitch_deg - self.neutral_pitch) <= self.max_eye_pitch_deg)
+
     def process(self, obs: FaceObservation, trip_elapsed_sec: float) -> DriverState:
-        if obs.face_present and obs.ear > 0.0:
+        observable = self.eyes_observable(obs)
+        if observable and obs.ear > 0.0:
             self._calibrate(obs, trip_elapsed_sec)
 
         # EAR is always computed and its calibration always runs: it is the
@@ -133,7 +157,9 @@ class DriverPipeline:
         use_cnn = (self.eye_signal == "cnn" and obs.face_present
                    and obs.p_closed is not None)
         openness = (1.0 - obs.p_closed) if use_cnn else ear_openness
-        self.window.add(obs.t, openness, obs.face_present)
+        # Unobservable frames count as "no face" for the window: neither open
+        # nor closed, just not seen.
+        self.window.add(obs.t, openness, observable)
 
         # The level ticks at update_hz, NOT per frame. Hysteresis counts these
         # ticks, so running it at frame rate would turn "3 consecutive updates"
@@ -171,6 +197,7 @@ class DriverPipeline:
             p_closed=obs.p_closed,
             ear_openness=ear_openness,
             window_usable=f.usable,
+            eyes_observable=observable,
         )
 
     # ---------------- calibration ----------------
@@ -179,8 +206,10 @@ class DriverPipeline:
         ctx = SampleContext(
             trip_elapsed_sec=trip_elapsed_sec,
             face_present=obs.face_present,
-            head_pitch_deg=obs.pitch_deg,
-            head_yaw_deg=obs.yaw_deg,
+            # Relative to road-facing, so an off-axis mount does not make every
+            # frame look like a turned head to the passive calibrator.
+            head_pitch_deg=obs.pitch_deg - self.neutral_pitch,
+            head_yaw_deg=obs.yaw_deg - self.neutral_yaw,
             # Feeding the current level back in is what keeps a drowsy stretch
             # out of the baseline (calibration.is_known_alert).
             drowsiness_level=self.hysteresis.level,
@@ -232,6 +261,6 @@ class DriverPipeline:
         if not f.usable:
             c *= 0.5
         c *= max(f.face_present_ratio, 0.25) if f.n_samples > 1 else 0.5
-        if not obs.face_present:
+        if not self.eyes_observable(obs):
             c *= 0.7
         return float(min(max(c, 0.0), 1.0))

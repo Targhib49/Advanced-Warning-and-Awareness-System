@@ -35,6 +35,10 @@ class RoadState:
     # --- steering ---
     steering_angle_deg: Optional[float] = None
 
+    # --- driver controls, where a source knows them (simulator; OBD-II later) ---
+    reversing: Optional[bool] = None
+    turn_signal: Optional[str] = None   # "left" | "right" | None
+
     # --- traffic context ---
     vehicle_ahead_distance_m: Optional[float] = None
     traffic_light_color: Optional[str] = None
