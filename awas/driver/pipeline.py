@@ -57,6 +57,15 @@ class DriverState:
     personalized: bool = False
     reason: str = ""
 
+    # Which eye signal drove `openness` this frame: "cnn" (T1) or "ear".
+    # Both are carried so a session log can compare them on the same frames.
+    eye_source: str = "ear"
+    p_closed: Optional[float] = None
+    ear_openness: float = 0.0
+    # Whether the feature window holds enough observation to judge. The
+    # pipeline sets it; a hand-built state is taken as usable, as before.
+    window_usable: bool = True
+
     # Carried through for the debug overlay only; nothing downstream reads it.
     landmarks: list = field(default_factory=list)
     landmarks_drawn: bool = False
@@ -73,7 +82,22 @@ class DriverPipeline:
         win_cfg: Optional[WindowConfig] = None,
         lvl_cfg: Optional[LevelConfig] = None,
         update_hz: float = 1.0,
+        eye_signal: str = "cnn",
+        cnn_confidence: float = 0.80,
     ):
+        """`eye_signal`: "cnn" uses T1's P(closed) whenever a frame has one and
+        falls back to EAR when it does not; "ear" is the v2 path, kept as the
+        control condition.
+
+        `cnn_confidence` replaces the EAR calibration's confidence while the
+        CNN is driving. It is UNFITTED: the model scored 98.6% on unseen MRL
+        subjects, but MRL is infrared and a cabin camera in daylight is not, so
+        it starts below that until it is measured on cabin footage.
+        """
+        if eye_signal not in ("cnn", "ear"):
+            raise ValueError(f"eye_signal must be 'cnn' or 'ear', got {eye_signal!r}")
+        self.eye_signal = eye_signal
+        self.cnn_confidence = cnn_confidence
         self.driver_name = driver_name
         self.profile_dir = Path(profile_dir) if profile_dir else None
         self.cal_cfg = cal_cfg or CalibrationConfig()
@@ -102,7 +126,13 @@ class DriverPipeline:
         if obs.face_present and obs.ear > 0.0:
             self._calibrate(obs, trip_elapsed_sec)
 
-        openness = self.normalizer.openness(obs.ear) if obs.face_present else 0.0
+        # EAR is always computed and its calibration always runs: it is the
+        # fallback when the CNN cannot crop an eye, and the control to compare
+        # the CNN against.
+        ear_openness = self.normalizer.openness(obs.ear) if obs.face_present else 0.0
+        use_cnn = (self.eye_signal == "cnn" and obs.face_present
+                   and obs.p_closed is not None)
+        openness = (1.0 - obs.p_closed) if use_cnn else ear_openness
         self.window.add(obs.t, openness, obs.face_present)
 
         # The level ticks at update_hz, NOT per frame. Hysteresis counts these
@@ -115,10 +145,13 @@ class DriverPipeline:
             self.hysteresis.update(self._last_proposal)
 
         f = self._last_features
+        # The CNN is population-trained, so it needs no personal calibration
+        # before it can be acted on; EAR does.
+        calibrating = not self.normalizer.personalized and not use_cnn
         return DriverState(
             t=obs.t,
             drowsiness_level=self.hysteresis.level,
-            confidence=self._confidence(f, obs),
+            confidence=self._confidence(f, obs, use_cnn),
             face_present=obs.face_present,
             eye_aspect_ratio=obs.ear,
             openness=openness,
@@ -129,11 +162,15 @@ class DriverPipeline:
             blink_duration_mean_ms=f.mean_blink_duration_ms,
             blink_rate_per_min=f.blink_rate_per_min,
             longest_closure_ms=f.longest_closure_ms,
-            calibrating=not self.normalizer.personalized,
+            calibrating=calibrating,
             calibration_progress=self.calibration_progress,
             personalized=self.normalizer.personalized,
             reason=self._last_proposal.reason,
             landmarks=obs.landmarks,
+            eye_source="cnn" if use_cnn else "ear",
+            p_closed=obs.p_closed,
+            ear_openness=ear_openness,
+            window_usable=f.usable,
         )
 
     # ---------------- calibration ----------------
@@ -183,14 +220,15 @@ class DriverPipeline:
             return True
         return (t - self._last_estimate_t) >= (1.0 / self.update_hz)
 
-    def _confidence(self, f: WindowFeatures, obs: FaceObservation) -> float:
+    def _confidence(self, f: WindowFeatures, obs: FaceObservation, use_cnn: bool = False) -> float:
         """How much the state machine should trust this level.
 
         Three things pull it down, and each one is a real reason to be quieter:
-        an uncalibrated driver, a window with too little observation in it, and
-        a face we are only intermittently seeing.
+        an uncalibrated driver (EAR only — the CNN needs no calibration), a
+        window with too little observation in it, and a face we are only
+        intermittently seeing.
         """
-        c = self.normalizer.confidence
+        c = self.cnn_confidence if use_cnn else self.normalizer.confidence
         if not f.usable:
             c *= 0.5
         c *= max(f.face_present_ratio, 0.25) if f.n_samples > 1 else 0.5

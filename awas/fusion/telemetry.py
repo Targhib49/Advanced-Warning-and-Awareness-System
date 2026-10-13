@@ -21,13 +21,21 @@ def fuse_channels(
     driver: DriverState,
     lane: Optional[LaneStats] = None,
     sdlp_baseline_m: Optional[float] = None,
+    mode: str = "weighted",
 ) -> FusedEstimate:
-    """Combine the facial and vehicle channels into one estimate."""
+    """Combine the facial and vehicle channels into one estimate.
+
+    `mode` is a deployment decision, not a tuning knob (results §D-3): the
+    weighted rule suppresses a facial false alarm the lane contradicts, the
+    asymmetric rule keeps an early warning either channel raises. No single
+    operator does both.
+    """
     channels = [
         facial_channel(
             level=driver.drowsiness_level,
             confidence=driver.confidence,
             face_present=driver.face_present,
+            window_usable=getattr(driver, "window_usable", True),
         )
     ]
     if lane is not None:
@@ -35,7 +43,7 @@ def fuse_channels(
             sdlp=lane.sdlp, departures=lane.departures,
             samples=lane.samples, sdlp_baseline_m=sdlp_baseline_m,
         ))
-    return fuse(channels)
+    return fuse(channels, mode=mode)
 
 
 def build_telemetry(

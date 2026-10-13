@@ -58,6 +58,9 @@ class FaceObservation:
     pitch_deg: float = 0.0
     yaw_deg: float = 0.0
     roll_deg: float = 0.0
+    # T1 eye-state CNN, mean over both eyes; None when no model ran or the
+    # eyes were too small to crop (awas.driver.eyestate).
+    p_closed: Optional[float] = None
 
 
 def camera_matrix(width: int, height: int) -> np.ndarray:

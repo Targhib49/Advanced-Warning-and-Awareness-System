@@ -73,7 +73,7 @@ class SessionLog:
         self._fh.write(json.dumps(record, separators=(",", ":")) + "\n")
         self._fh.flush()   # a session that ends in a crash still has its data
 
-    def sample(self, t: float, state: Any, telemetry: Any = None) -> bool:
+    def sample(self, t: float, state: Any, telemetry: Any = None, fused: Any = None) -> bool:
         """Record a periodic snapshot. Rate-limited to `sample_hz`.
 
         Returns whether it was written, so callers can avoid building the
@@ -100,10 +100,28 @@ class SessionLog:
             "pitch": _round(getattr(state, "head_pitch_deg", None), 1),
             "yaw": _round(getattr(state, "head_yaw_deg", None), 1),
             "personalized": getattr(state, "personalized", None),
+            # Both eye signals on the same frame: the CNN-versus-EAR comparison
+            # the architecture asks for comes straight out of these.
+            "eye_source": getattr(state, "eye_source", None),
+            "p_closed": _round(getattr(state, "p_closed", None), 3),
+            "ear_openness": _round(getattr(state, "ear_openness", None), 3),
         }
         if telemetry is not None:
             rec["speed_kmh"] = _round(getattr(telemetry, "speed_kmh", None), 1)
+            rec["speed_source"] = getattr(telemetry, "speed_source", None)
             rec["workload"] = _round(getattr(telemetry, "workload", None), 3)
+            rec["sdlp"] = _round(getattr(telemetry, "sdlp", None), 4)
+            rec["steering_reversals"] = _round(getattr(telemetry, "steering_reversal_rate", None), 2)
+            rec["lane_departure"] = getattr(telemetry, "lane_departure", None)
+        if fused is not None:
+            # `level` above is the facial channel; this is what was acted on.
+            rec["fused_level"] = getattr(fused, "level", None)
+            rec["fused_confidence"] = _round(getattr(fused, "confidence", None))
+            rec["agreement"] = _round(getattr(fused, "agreement", None))
+            rec["channels"] = {
+                c.source: [_round(c.level, 2), _round(c.confidence, 2)]
+                for c in getattr(fused, "channels", []) if c.available
+            }
         self._write(rec)
         self.counts["sample"] += 1
         return True

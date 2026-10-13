@@ -38,6 +38,9 @@ const L10N = {
     critLine: n => n > 0 ? "Mikrotidur terdeteksi" : "Mata tertutup terlalu lama",
     critSub: "Menepi di tempat aman sekarang.",
     calib: p => `Mengemudi seperti biasa. Mempelajari mata Anda (${Math.round(p * 100)}%).`,
+    weave: (sdlp, base) => base == null
+      ? `Oleng ${cm(sdlp)} cm (SDLP ${sdlp.toFixed(2).replace(".", ",")} m), belum ada patokan pribadi`
+      : `Oleng ${cm(sdlp - base)} cm lebih dari biasanya (SDLP ${sdlp.toFixed(2).replace(".", ",")} m)`,
     worst: "terparah", lost: "Tidak terhubung ke AWAS",
   },
   en: {
@@ -49,9 +52,13 @@ const L10N = {
     critLine: n => n > 0 ? "Microsleep detected" : "Eyes closed too long",
     critSub: "Pull over somewhere safe now.",
     calib: p => `Drive as usual. Learning your eyes (${Math.round(p * 100)}%).`,
+    weave: (sdlp, base) => base == null
+      ? `Weaving ${cm(sdlp)} cm (SDLP ${sdlp.toFixed(2)} m), no personal baseline yet`
+      : `Weaving ${cm(sdlp - base)} cm more than your usual (SDLP ${sdlp.toFixed(2)} m)`,
     worst: "worst", lost: "No connection to AWAS",
   },
 };
+const cm = m => Math.max(0, Math.round(m * 100));
 
 function liveFor(s) {
   const X = L10N[lang], T = TEXT[lang];
@@ -68,6 +75,11 @@ function liveFor(s) {
       Object.assign(live.text, { word: T[own].word, line: X.held(s.held_reason) });
       break;
     }
+    case "occluded":
+      // Lane only: the face is gone, the vehicle channel carries on, capped.
+      Object.assign(live, { level: s.level, channel: undefined });
+      if (s.sdlp_m != null) live.text.note = X.weave(s.sdlp_m, s.sdlp_baseline_m);
+      break;
     case "calibrating":
       live.progress = s.calibration_progress;
       live.text.line = X.calib(s.calibration_progress);

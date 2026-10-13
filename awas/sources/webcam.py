@@ -20,7 +20,9 @@ from awas.driver.landmarks import (
 )
 from awas.driver.pipeline import DriverPipeline, DriverState
 from awas.fusion.telemetry import build_telemetry, fuse_channels
-from awas.road.signals import LaneTracker, NullRoadSource, RoadSource
+from awas.road.signals import (
+    LaneTracker, NullRoadSource, RoadSource, SdlpCalibrator, SdlpProfile,
+)
 from awas.road.workload import WorkloadEstimator
 from awas.sources.base import Source
 
@@ -50,10 +52,23 @@ class WebcamSource(Source):
         road: Optional[RoadSource] = None,
         width: int = 640,
         height: int = 480,
+        eye_model=None,          # awas.driver.eyestate.EyeStateClassifier, or None for EAR only
+        fusion_mode: str = "weighted",
     ):
         import cv2
 
-        self.pipeline = DriverPipeline(driver_name=driver_name, profile_dir=profile_dir)
+        self.eye_model = eye_model
+        self.fusion_mode = fusion_mode
+        # The vehicle channel's personal scale (fusion.core: excess over the
+        # driver's own alert SDLP). Offered one SDLP estimate per interval —
+        # consecutive per-frame values share almost the whole window and would
+        # count one minute of driving many times over.
+        self.sdlp_cal = SdlpCalibrator(driver_name)
+        self.sdlp_baseline: Optional[SdlpProfile] = None
+        self._sdlp_offered_at: Optional[float] = None
+        self.sdlp_offer_every_sec = 30.0
+        self.pipeline = DriverPipeline(driver_name=driver_name, profile_dir=profile_dir,
+                                       eye_signal="cnn" if eye_model else "ear")
         self.landmarker = landmarker or MediaPipeLandmarker(
             model_path or default_model_path()
         )
@@ -82,6 +97,7 @@ class WebcamSource(Source):
         self.last_road = None
         self.last_workload = None
         self.last_fused = None
+        self.last_lane_stats = None
 
     def read(self) -> Telemetry:
         import cv2
@@ -94,7 +110,10 @@ class WebcamSource(Source):
         else:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             self.last_frame = frame
-            state = self.pipeline.process(self.landmarker.observe(rgb, t), t)
+            obs = self.landmarker.observe(rgb, t)
+            if self.eye_model is not None and obs.face_present and obs.landmarks:
+                obs.p_closed = self.eye_model.p_closed(rgb, obs.landmarks)
+            state = self.pipeline.process(obs, t)
 
         self.last_state = state
 
@@ -109,7 +128,11 @@ class WebcamSource(Source):
 
         self.last_road = road
         self.last_workload = workload
-        self.last_fused = fuse_channels(state, lane_stats)
+        self._learn_sdlp_baseline(lane_stats.sdlp, t, state.drowsiness_level)
+        baseline = self.sdlp_baseline.baseline_m if self.sdlp_baseline else None
+        self.last_lane_stats = lane_stats
+        self.last_fused = fuse_channels(state, lane_stats, sdlp_baseline_m=baseline,
+                                        mode=self.fusion_mode)
 
         # A road source that knows the engine (a simulator, later OBD-II) wins
         # over the demo's manual ignition key.
@@ -119,6 +142,17 @@ class WebcamSource(Source):
             ignition_on=self.ignition_on if ignition is None else ignition,
             fused=self.last_fused,
         )
+
+    def _learn_sdlp_baseline(self, sdlp, t: float, level: int) -> None:
+        if sdlp is None:
+            return
+        if self._sdlp_offered_at is not None and t - self._sdlp_offered_at < self.sdlp_offer_every_sec:
+            return
+        self._sdlp_offered_at = t
+        # The calibrator itself refuses values outside the early-trip window,
+        # while any drowsiness is showing, or outside a plausible range.
+        if self.sdlp_cal.observe(sdlp, trip_elapsed_sec=t, drowsiness_level=level):
+            self.sdlp_baseline = self.sdlp_cal.build() or self.sdlp_baseline
 
     def close(self) -> None:
         try:

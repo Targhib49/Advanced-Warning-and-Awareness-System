@@ -29,6 +29,7 @@ def choose_screen(
     face_present: bool,
     calibrating: bool,
     held_reason: Optional[str] = None,
+    lane_available: bool = False,
 ) -> str:
     """Pick the screen key. Order matters: safety outranks bookkeeping."""
     if driving_state in PARKED_STATES:
@@ -36,7 +37,9 @@ def choose_screen(
     if level >= 4:
         return "critical"
     if not face_present:
-        return "noface"
+        # With the lane still read, the vehicle channel carries on alone —
+        # the degradation ladder's "lane only" row (plan §5.4), not blindness.
+        return "occluded" if lane_available else "noface"
     if held_reason and level >= 1:
         return "gate"
     if calibrating:
@@ -119,13 +122,16 @@ def snapshot(
     trip: TripTracker,
     kss: Optional[int],
     now: Optional[float] = None,
+    sdlp_m: Optional[float] = None,
+    sdlp_baseline_m: Optional[float] = None,
+    fused=None,                   # awas.fusion.core.FusedEstimate
 ) -> Dict:
     """Everything the page needs, as plain JSON."""
     now = time.time() if now is None else now
     worst = trip.worst()
     return {
         "screen": choose_screen(driving_state, level, driver.face_present,
-                                driver.calibrating, held_reason),
+                                driver.calibrating, held_reason, lane_available),
         "level": level,
         "clock": _hhmm(now),
         "driving_state": driving_state.value,
@@ -140,6 +146,14 @@ def snapshot(
         "longest_closure_s": round(driver.longest_closure_ms / 1000.0, 1),
         "perclos": round(driver.perclos, 3),
         "held_reason": held_reason,
+        "eye_source": getattr(driver, "eye_source", None),
+        "sdlp_m": None if sdlp_m is None else round(sdlp_m, 3),
+        "sdlp_baseline_m": None if sdlp_baseline_m is None else round(sdlp_baseline_m, 3),
+        "fusion": None if fused is None else {
+            "explain": fused.explain(),
+            "agreement": None if fused.agreement is None else round(fused.agreement, 2),
+            "confidence": round(fused.confidence, 2),
+        },
         "trip": {
             "driving_min": int(trip.driving_sec // 60),
             "driving_sec": int(trip.driving_sec % 60),

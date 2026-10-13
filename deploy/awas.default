@@ -6,6 +6,13 @@
 #   --sim              speed, steering and lane from the ETS2 bridge (UDP 8097)
 #   --mute             decide and log, but stay silent
 #   --condition A-D    experimental condition (see --conditions)
+#   --eye-signal ear   EAR only, the control condition (default: the T1 CNN,
+#                      falling back to EAR on frames it cannot crop)
+#   --fusion asymmetric  keep early warnings either channel raises (default:
+#                      weighted, which suppresses facial false alarms the
+#                      lane contradicts — results §D-3)
+#   --camera-view      debug view with the camera at /camera — demos only,
+#                      images of the driver leave the device
 #
 # While no simulator is connected the speed is the manual demo speed, changed
 # with [ and ] on the dashboard page; a connected ETS2 bridge takes over.
