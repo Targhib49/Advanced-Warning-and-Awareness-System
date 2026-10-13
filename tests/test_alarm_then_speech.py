@@ -93,3 +93,36 @@ def test_a_count_that_ages_out_then_rises_again_is_new():
     _tick(sm, 0.0, microsleep_count=3)
     _tick(sm, 30.0, microsleep_count=2)                        # one left the 60 s window
     assert _tick(sm, 40.0, microsleep_count=3) == ["critical_drowsy"]
+
+
+# ---------------------------------------------------------------- eyes that stay shut
+
+def test_window_reports_the_closure_in_progress():
+    from awas.driver.window import FeatureWindow
+    w = FeatureWindow()
+    for i in range(30):
+        w.add(i / 10, 1.0)                                      # open for 3 s
+    for i in range(30, 55):
+        w.add(i / 10, 0.0)                                      # shut since 3.0 s
+    assert abs(w.features().current_closure_ms - 2400) < 1
+    w.add(5.5, 1.0)                                             # open again
+    assert w.features().current_closure_ms == 0.0
+    assert w.features().longest_closure_ms >= 2400
+
+
+def test_the_alarm_repeats_while_the_eyes_stay_shut_and_stops_when_they_open():
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+    fired = []
+    for k in range(0, 21):                                      # 10 s at 2 Hz, eyes shut from 0 s
+        t = k / 2
+        fired += [(t, a) for a in _tick(sm, t, microsleep_count=1, eyes_closed_ms=2000 + t * 1000)]
+    times = [t for t, a in fired if a == "critical_drowsy"]
+    assert times == [0.0, 3.0, 6.0, 9.0]
+    # Eyes open: level 4 holds in the window, but nothing more sounds.
+    assert all(_tick(sm, 10 + k, microsleep_count=1, eyes_closed_ms=0.0) == [] for k in range(1, 20))
+
+
+def test_a_brief_closure_at_level_4_does_not_repeat_the_alarm():
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+    assert _tick(sm, 0.0, microsleep_count=1, eyes_closed_ms=2100) == ["critical_drowsy"]
+    assert _tick(sm, 3.5, microsleep_count=1, eyes_closed_ms=600) == []

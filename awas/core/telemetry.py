@@ -38,6 +38,7 @@ class Telemetry:
     # --- Layer 1: driver state, windowed features (diagnostic + fusion input) ---
     perclos: float = 0.0             # fraction of window with eyes >80% closed
     microsleep_count: int = 0        # closures >=500ms in window
+    eyes_closed_ms: float = 0.0      # the closure in progress now, 0 if open
     blink_duration_mean_ms: float = 0.0
     yawn_rate_per_min: float = 0.0
     head_nod_count: int = 0

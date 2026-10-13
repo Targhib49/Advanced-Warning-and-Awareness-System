@@ -94,6 +94,7 @@ class SessionLog:
             "blink_ms": _round(getattr(state, "blink_duration_mean_ms", None), 1),
             "blink_rate": _round(getattr(state, "blink_rate_per_min", None), 2),
             "longest_closure_ms": _round(getattr(state, "longest_closure_ms", None), 1),
+            "closed_ms": _round(getattr(state, "current_closure_ms", None), 1),
             "face": getattr(state, "face_present", None),
             "ear": _round(getattr(state, "eye_aspect_ratio", None)),
             "openness": _round(getattr(state, "openness", None), 3),

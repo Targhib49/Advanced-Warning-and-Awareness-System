@@ -77,6 +77,7 @@ def build_telemetry(
         # facial channel, for diagnostics and the log
         perclos=driver.perclos,
         microsleep_count=driver.microsleep_count,
+        eyes_closed_ms=getattr(driver, "current_closure_ms", 0.0),
         blink_duration_mean_ms=driver.blink_duration_mean_ms,
         face_present=driver.face_present,
         eye_aspect_ratio=driver.eye_aspect_ratio,

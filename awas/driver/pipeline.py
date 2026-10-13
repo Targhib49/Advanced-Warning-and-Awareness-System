@@ -51,6 +51,7 @@ class DriverState:
     blink_duration_mean_ms: float = 0.0
     blink_rate_per_min: float = 0.0
     longest_closure_ms: float = 0.0
+    current_closure_ms: float = 0.0
 
     calibrating: bool = True
     calibration_progress: float = 0.0
@@ -232,6 +233,7 @@ class DriverPipeline:
             blink_duration_mean_ms=f.mean_blink_duration_ms,
             blink_rate_per_min=f.blink_rate_per_min,
             longest_closure_ms=f.longest_closure_ms,
+            current_closure_ms=f.current_closure_ms,
             calibrating=calibrating,
             calibration_progress=self.calibration_progress,
             personalized=self.normalizer.personalized,

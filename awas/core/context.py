@@ -44,3 +44,4 @@ class StateContext:
     # (recovery) from a steady one; and whether this face loss was warned of.
     prev_level: int = 0
     face_lost_warned: bool = False
+    last_critical_at: Optional[float] = None     # when the alarm last sounded

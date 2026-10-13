@@ -53,5 +53,12 @@ class StateMachineConfig:
     # the nod-off the eye signals then cannot see (bench drive 5). UNFITTED.
     face_lost_warn_sec: float = 5.0
 
+    # Eyes that STAY shut keep the alarm going: past this closure, it repeats
+    # every `closed_alarm_repeat_sec` until they open (an alarm clip is ~2.4 s,
+    # so this is near-continuous). One 10 s closure used to get one alarm.
+    # UNFITTED.
+    closed_alarm_after_ms: float = 2000.0
+    closed_alarm_repeat_sec: float = 3.0
+
     # --- jam nudge ---
     jam_gap_open_m: float = 8.0

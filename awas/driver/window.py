@@ -62,6 +62,10 @@ class WindowFeatures:
     blink_rate_per_min: float = 0.0
     mean_blink_duration_ms: float = 0.0
     longest_closure_ms: float = 0.0
+    # The closure still in progress at the newest sample, 0 if the eyes are
+    # open now: "closed for how long, right now", which a repeating alarm
+    # needs and the window's longest closure cannot say.
+    current_closure_ms: float = 0.0
     face_present_ratio: float = 0.0
     observed_sec: float = 0.0
     n_samples: int = 0
@@ -156,6 +160,7 @@ class FeatureWindow:
             if self.cfg.min_blink_ms <= e.duration_ms < self.cfg.microsleep_ms
         ]
         longest = max((e.duration_ms for e in eps), default=0.0)
+        current = eps[-1].duration_ms if eps and self._is_closed(samples[-1]) else 0.0
         mean_blink = sum(e.duration_ms for e in blinks) / len(blinks) if blinks else 0.0
         rate = len(blinks) / (observed / 60.0) if observed > 0 else 0.0
 
@@ -166,6 +171,7 @@ class FeatureWindow:
             blink_rate_per_min=rate,
             mean_blink_duration_ms=mean_blink,
             longest_closure_ms=longest,
+            current_closure_ms=current,
             face_present_ratio=face_ratio,
             observed_sec=observed,
             n_samples=len(samples),

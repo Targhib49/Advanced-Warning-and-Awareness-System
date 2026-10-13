@@ -206,10 +206,20 @@ class StateMachine:
             # was wide awake (bench drive 3) — alarm fatigue, which teaches a
             # driver to ignore the one alarm that matters.
             entering = not self.ctx.critical_active
-            if (entering or new_microsleep) and self._alert_cooldown_ok(t):
+            # Eyes still shut, past the critical closure, and the last alarm
+            # has finished: sound it again. Its own short interval, not the
+            # shared alert cooldown — a driver asleep at the wheel is the one
+            # case where repeating is the point.
+            still_closed = (
+                t.eyes_closed_ms >= self.cfg.closed_alarm_after_ms
+                and self.ctx.last_critical_at is not None
+                and t.timestamp - self.ctx.last_critical_at >= self.cfg.closed_alarm_repeat_sec
+            )
+            if ((entering or new_microsleep) and self._alert_cooldown_ok(t)) or still_closed:
                 actions.append(self._fire_alert(t, "critical_drowsy", urgency=4))
                 self.ctx.critical_active = True
                 self.ctx.prev_microsleeps = t.microsleep_count
+                self.ctx.last_critical_at = t.timestamp
             # A microsleep that lands inside the alert cooldown is not
             # consumed: it stays "new" and sounds the moment the cooldown
             # ends. Drive 7: closures of 4-5 s two seconds after an alarm
