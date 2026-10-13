@@ -31,7 +31,9 @@ pause and speed limit to `127.0.0.1:8098` only; the bridge forwards them to
 the Pi exactly as on Windows.
 
 1. Install ETS2 from Steam.
-2. Copy this `bridge` folder to the Mac and, in Terminal:
+2. Copy this `bridge` folder to the Mac (AirDrop a zip of it is easiest) and
+   double-click **`mac/Install AWAS bridge.command`**. If macOS says it is
+   from an unidentified developer, right-click it > Open. Or, in Terminal:
 
    ```
    bash bridge/mac/install_mac.sh            # or add  --pi <Pi's IP>
