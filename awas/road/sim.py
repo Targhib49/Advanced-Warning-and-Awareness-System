@@ -49,6 +49,12 @@ class SimConfig:
     # reversal deadband is written in; ETS2's default wheel is 900° lock to lock.
     steering_range_deg: float = 900.0
     ack_every_sec: float = 1.0
+    # Lane keeping is measured only at road speed. SDLP is defined for
+    # holding a lane, and below this a truck turns at junctions, pulls in and
+    # crawls, which reads as weaving; production lane-departure warnings arm
+    # at a similar speed (55-65 km/h). Bench drive 6 crawled at 0-12 km/h and
+    # was told "check your lane" every five seconds. UNFITTED.
+    lane_min_speed_kmh: float = 55.0
 
 
 @dataclass
@@ -222,8 +228,14 @@ class SimRoadSource:
                 self.lane_tried += 1
                 if cam.lane_offset_m is not None:
                     self.lane_seen += 1
-                state.lane_offset_m = cam.lane_offset_m
-                state.lane_departure = cam.lane_departure
+                # Detection always runs, so the bridge's readout can show
+                # whether the lane is found while setting up. But a lane
+                # measured through the built-in guess at the geometry is not
+                # a measurement: until this view is calibrated, and below
+                # road speed, it reaches neither SDLP nor an alert.
+                if self.camera.calibrated and speed >= self.cfg.lane_min_speed_kmh:
+                    state.lane_offset_m = cam.lane_offset_m
+                    state.lane_departure = cam.lane_departure
         return state
 
     def status(self) -> dict:

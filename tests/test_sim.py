@@ -112,3 +112,22 @@ def test_real_socket_round_trip_with_acknowledgement(sim):
         assert sim.read(1.0).speed_kmh == pytest.approx(55.0)
     finally:
         client.close()
+
+
+# Bench drive 6: an uncalibrated game view, crawling through a town, gave an
+# SDLP of 1.2 m and "check your lane" every five seconds.
+
+def test_slow_driving_gives_no_lane_sample(sim):
+    sim.handle(tel(speed_kmh=12.0))
+    sim.handle(frame(0.9))
+    state = sim.read(1.0)
+    assert state.lane_offset_m is None and not state.lane_departure
+    assert sim.status()["lane_found"]                       # still shown to the bridge
+
+
+def test_an_uncalibrated_view_gives_no_lane_sample(sim):
+    sim.camera.calibrated = False
+    sim.handle(tel())
+    sim.handle(frame(0.2))
+    assert sim.read(1.0).lane_offset_m is None
+    assert sim.status()["lane_found"]

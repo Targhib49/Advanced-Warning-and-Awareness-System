@@ -206,12 +206,16 @@ class StateMachine:
             entering = not self.ctx.critical_active
             if (entering or new_microsleep) and self._alert_cooldown_ok(t):
                 actions.append(self._fire_alert(t, "critical_drowsy", urgency=4))
+                self.ctx.critical_active = True
+            # Only a SOUNDED alarm counts as having entered. If another
+            # alert's cooldown held it back (drive 6: a lane alert 4.9 s
+            # earlier), "entering" stays true and it sounds next update,
+            # instead of the reaching of level 4 going unannounced.
             # Conversation follows the alert, it does not replace it; while the
             # level holds with nothing new, it is a calm periodic reminder
             # (intervention_cooldown_sec[4]) rather than an alarm.
             if self._intervention_allowed(4, t):
                 actions.append(self._fire_speak(4, "moving_critical", t))
-            self.ctx.critical_active = True
         elif level >= 1:
             self.ctx.critical_active = False
             if self._intervention_allowed(level, t):

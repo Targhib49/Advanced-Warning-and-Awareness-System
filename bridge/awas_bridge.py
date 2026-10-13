@@ -358,9 +358,8 @@ def main() -> None:
     ap.add_argument("--duration", type=float, default=0.0, help="stop after this many seconds")
     args = ap.parse_args()
 
-    try:
-        pi_ip = socket.gethostbyname(args.pi)
-    except socket.gaierror:
+    pi_ip = _resolve_ipv4(args.pi)
+    if pi_ip is None:
         sys.exit(f"Cannot find '{args.pi}'. Use the Pi's IP instead: --pi 10.x.x.x "
                  f"(shown in the phone's hotspot device list).")
     dest = (pi_ip, args.port)
@@ -450,6 +449,19 @@ def main() -> None:
         if rec_tel:
             rec_tel.close()
         print(f"\nsent {sent['telemetry']} telemetry, {sent['frames']} frames")
+
+
+def _resolve_ipv4(name: str, tries: int = 3):
+    """The Pi's IPv4 address. getaddrinfo, not gethostbyname: on macOS the
+    latter can fail for .local (mDNS) names that resolve fine otherwise, and
+    a first mDNS lookup is sometimes slow, so it is retried."""
+    for i in range(tries):
+        try:
+            return socket.getaddrinfo(name, None, socket.AF_INET, socket.SOCK_DGRAM)[0][4][0]
+        except socket.gaierror:
+            if i + 1 < tries:
+                time.sleep(1.0)
+    return None
 
 
 def _mac_can_capture() -> bool:

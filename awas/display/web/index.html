@@ -66,13 +66,18 @@
   #setup .stats { font: 500 18px var(--mono); color: var(--muted); }
   #switch { position: fixed; right: 18px; bottom: 16px; font: 600 18px var(--body); color: var(--ink);
             background: rgba(34,41,45,.92); border: 0; border-radius: 10px; padding: 10px 16px; display: none; z-index: 4; }
+  /* Demo sound (--browser-audio): shown only when the device offers it. */
+  #sound { position: fixed; right: 14px; top: 12px; font: 500 15px var(--mono); color: var(--muted);
+           background: rgba(34,41,45,.92); border: 0; border-radius: 8px; padding: 7px 12px; display: none; z-index: 6; }
+  #sound.off { color: var(--ink); background: rgba(224,169,60,.9); color: #111; }
 </style>
 </head>
 <body>
 <canvas id="screen"></canvas>
 <div id="setup"></div>
 <button id="switch"></button>
-<div id="help">[ ] speed &nbsp; i ignition / park &nbsp; 1-9 KSS (parked) &nbsp; d switch driver (parked) &nbsp; l language &nbsp; f full screen &nbsp; ? hide</div>
+<button id="sound"></button>
+<div id="help">[ ] speed &nbsp; i ignition / park &nbsp; 1-9 KSS (parked) &nbsp; d switch driver (parked) &nbsp; l language &nbsp; f full screen &nbsp; s sound &nbsp; ? hide</div>
 <script type="module">
 import { drawScreen, kssButtonAt, TEXT, W, H } from "/app-screens.js";
 
@@ -458,6 +463,70 @@ function updateCalibration(s, S) {
   setupEl.querySelector(".stats").textContent = c.step === "closed" ? S.round(c.rounds, c.rounds_needed) : "";
 }
 
+// ---------------------------------------------------------------- demo sound
+// With --browser-audio the device hands this page what it decided to say, as
+// clip ids from its own pre-rendered bank: the page is a loudspeaker for a
+// prototype with no speaker, nothing more. It decides nothing, and it plays
+// only the newest utterance, never a backlog. Browsers allow sound only after
+// a click on the page, hence the button.
+const soundBtn = document.getElementById("sound");
+let soundSeq = null, soundOn = false, soundSrc = null;
+const clipBuffers = new Map();
+
+function showSound(offered) {
+  soundBtn.style.display = offered ? "block" : "none";
+  soundBtn.classList.toggle("off", !soundOn);
+  soundBtn.textContent = soundOn ? "🔊 sound on" : "🔇 click for sound";
+}
+
+function toggleSound() {
+  soundOn = !soundOn;
+  if (soundOn) {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+  } else if (soundSrc) { try { soundSrc.stop(); } catch (_) {} soundSrc = null; }
+  showSound(true);
+}
+
+async function clipBuffer(id) {
+  if (!clipBuffers.has(id)) {
+    const r = await fetch(`/phrases/${id}.wav`);
+    clipBuffers.set(id, await audioCtx.decodeAudioData(await r.arrayBuffer()));
+  }
+  return clipBuffers.get(id);
+}
+
+async function playSound() {
+  const r = await fetch("/sound", { cache: "no-store" });
+  if (!r.ok) return;
+  const { seq, clips } = await r.json();
+  if (seq < soundSeq) return;
+  soundSeq = seq;
+  if (!soundOn || !clips.length) return;
+  const buffers = await Promise.all(clips.map(clipBuffer));
+  if (seq < soundSeq) return;                           // something newer arrived meanwhile
+  if (soundSrc) { try { soundSrc.stop(); } catch (_) {} }  // the device chose to interrupt it
+  speechSynthesis?.cancel();
+  let at = audioCtx.currentTime + 0.02;
+  for (const b of buffers) {
+    const src = audioCtx.createBufferSource();
+    src.buffer = b; src.connect(audioCtx.destination); src.start(at);
+    at += b.duration; soundSrc = src;
+  }
+}
+
+function onSoundHeader(v) {
+  showSound(v !== null);
+  if (v === null) return;
+  const seq = Number(v);
+  // Just opened, or the device restarted and counts from 0 again: nothing to
+  // replay, only to catch up with.
+  if (soundSeq === null || seq < soundSeq) { soundSeq = seq; return; }
+  if (seq > soundSeq) { soundSeq = seq; playSound().catch(() => {}); }
+}
+
+soundBtn.addEventListener("click", toggleSound);
+
 // ---------------------------------------------------------------- plumbing
 
 let sized = "", uiVersion = null;
@@ -473,6 +542,7 @@ async function poll() {
     const v = r.headers.get("X-AWAS-UI");
     if (v && uiVersion && v !== uiVersion) { location.reload(); return; }
     uiVersion = v || uiVersion;
+    onSoundHeader(r.headers.get("X-AWAS-Sound"));
     if (r.ok) { const s = await r.json(); if (s.screen) { snap = s; lastOk = Date.now(); } }
   } catch (_) { /* the device may be restarting */ }
   render();
@@ -502,6 +572,7 @@ addEventListener("keydown", e => {
   else if (driving && e.key === "d" && snap.screen === "parked" && snap.can_switch_driver) send({ switch_driver: true });
   else if (e.key === "l") { lang = lang === "id" ? "en" : "id"; setupSig = ""; render(); }
   else if (e.key === "f") document.documentElement.requestFullscreen?.();
+  else if (e.key === "s" && soundBtn.style.display === "block") toggleSound();
   else if (e.key === "?") help.style.display = help.style.display === "block" ? "none" : "block";
 });
 

@@ -18,6 +18,12 @@ Two exceptions send camera images to the page, both bounded:
   points, readout) at /camera. That sends images of the driver off the device,
   which §8 otherwise forbids, so use it only with the consent of whoever is
   on camera.
+
+Sound, also opt-in and for demos (`enable_sound`): a prototype with no speaker
+of its own can have the page play what the device decided to say. The device
+still decides, times and logs every word; the page is only a loudspeaker on a
+cable, and it plays clips from the same pre-rendered bank by id — nothing is
+generated there. A shipping unit speaks through its own speaker (§7.2).
 """
 
 from __future__ import annotations
@@ -58,16 +64,21 @@ class DisplayServer:
         self._lock = threading.Lock()
         self.camera_view = camera_view
         self.camera_live = False          # guided calibration only
+        # The latest thing to say, for a page acting as the speaker. Only the
+        # newest matters: the executor has already settled what may interrupt
+        # what, so a page that missed one poll must not replay old alerts.
+        self._sound: Dict = {"seq": 0, "clips": []}
+        self._phrase_files: Dict[str, Path] = {}
         server = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
 
-            def _send(self, code: int, body: bytes, ctype: str) -> None:
+            def _send(self, code: int, body: bytes, ctype: str, cache: str = "no-store") -> None:
                 self.send_response(code)
                 self.send_header("Content-Type", ctype)
-                self.send_header("Cache-Control", "no-store")
+                self.send_header("Cache-Control", cache)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -84,6 +95,9 @@ class DisplayServer:
                     # A kiosk left open across an update sees it change and
                     # reloads, instead of drawing new screens with old code.
                     self.send_header("X-AWAS-UI", server.ui_version())
+                    if server._phrase_files:
+                        # Cheap to poll: the page fetches /sound only when this moves.
+                        self.send_header("X-AWAS-Sound", str(server._sound["seq"]))
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
                     self.wfile.write(body)
@@ -91,6 +105,15 @@ class DisplayServer:
                     self._send(200, (WEB_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
                 elif path == "/app-screens.js":
                     self._send(200, SCREENS_JS.read_bytes(), "text/javascript; charset=utf-8")
+                elif path == "/sound" and server._phrase_files:
+                    with server._lock:
+                        body = json.dumps(server._sound).encode()
+                    self._send(200, body, "application/json")
+                elif path.startswith("/phrases/") and path.endswith(".wav") \
+                        and path[len("/phrases/"):-4] in server._phrase_files:
+                    # By clip id from the bank's own manifest, never a path.
+                    wav = server._phrase_files[path[len("/phrases/"):-4]].read_bytes()
+                    self._send(200, wav, "audio/wav", cache="max-age=3600")
                 elif path == "/camera" and server.camera_view:
                     self._send(200, _CAMERA_PAGE, "text/html; charset=utf-8")
                 elif path == "/camera.mjpg" and server.camera_allowed:
@@ -172,6 +195,14 @@ class DisplayServer:
         with self._lock:
             self._frame = jpeg
             self._frame_seq += 1
+
+    def enable_sound(self, phrase_files: Dict[str, Path]) -> None:
+        """Let the page play the bank: {clip id: wav file}."""
+        self._phrase_files = dict(phrase_files)
+
+    def play_sound(self, clip_ids) -> None:
+        with self._lock:
+            self._sound = {"seq": self._sound["seq"] + 1, "clips": list(clip_ids)}
 
     def next_command(self) -> Optional[Dict]:
         try:

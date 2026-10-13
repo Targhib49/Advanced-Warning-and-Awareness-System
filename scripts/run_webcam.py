@@ -29,7 +29,7 @@ from awas.runtime.conditions import describe_all, get as get_condition
 from awas.runtime.executor import ActionExecutor
 from awas.runtime.session_log import SessionLog
 from awas.sources.webcam import WebcamSource, default_model_path
-from awas.speech.audio import NullAudioOut, StreamAudioOut
+from awas.speech.audio import BrowserAudioOut, NullAudioOut, StreamAudioOut, TeeAudioOut
 
 BG = (13, 12, 10)
 DIM = (91, 138, 124)
@@ -188,6 +188,9 @@ def main() -> None:
     ap.add_argument("--conditions", action="store_true",
                     help="list the experimental conditions and exit")
     ap.add_argument("--mute", action="store_true", help="decide and log, but stay silent")
+    ap.add_argument("--browser-audio", action="store_true",
+                    help="DEMO: the dashboard page also plays what the device says (after one "
+                         "click on the page to allow sound) — for a prototype with no speaker")
     ap.add_argument("--no-log", action="store_true")
     ap.add_argument("--log-hz", type=float, default=1.0,
                     help="session samples per second (default 1; raise it for bench tests, "
@@ -244,7 +247,7 @@ def main() -> None:
         lane_cal = load_lane_calibration(Path(args.sim_lane_cal))
         road = SimRoadSource(SimConfig(port=args.sim), calibration=lane_cal)
         print(f"simulator input on UDP {args.sim}"
-              + ("" if lane_cal else f" (no {args.sim_lane_cal}: lane geometry is the built-in guess)"))
+              + ("" if lane_cal else f" (no {args.sim_lane_cal}: lane shown to the bridge, not used until calibrated)"))
 
     eye_model = None
     if args.eye_signal == "cnn":
@@ -325,6 +328,15 @@ def main() -> None:
         trip = TripTracker()
         print(f"dashboard on http://0.0.0.0:{display.port}"
               + ("  (camera view at /camera — driver images leave the device)" if args.camera_view else ""))
+        if args.browser_audio and not args.mute:
+            try:
+                page = BrowserAudioOut(Path(args.phrases), display)
+            except (FileNotFoundError, ValueError) as exc:
+                print(f"browser audio unavailable ({exc})")
+            else:
+                device_speaker = not isinstance(audio, NullAudioOut)
+                executor.audio = TeeAudioOut(audio, page) if device_speaker else page
+                print("browser audio on: the dashboard page plays alerts (click it once to allow sound)")
 
     # systemd stops a service with SIGTERM. Without this the process dies
     # mid-write and the session log has no session_end record, which the

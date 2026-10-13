@@ -106,3 +106,14 @@ def test_parked_says_nothing():
     for t in range(0, 20):
         fired += _alerts(_tick(sm, float(t), face_present=False, speed_kmh=0.0))
     assert fired == []
+
+
+# ---------------------------------------------------------------- precedence
+
+def test_reaching_critical_is_announced_even_just_after_another_alert():
+    # Bench drive 6: a lane alert 4.9 s earlier held the alarm back by the
+    # shared alert cooldown, and level 4 was then treated as already announced.
+    sm = StateMachine(initial_state=DrivingState.MOVING)
+    assert _alerts(_tick(sm, 0.0, lane_departure=True)) == ["lane_departure"]
+    assert "critical_drowsy" not in _alerts(_tick(sm, 4.9, drowsiness_level=4))
+    assert "critical_drowsy" in _alerts(_tick(sm, 5.1, drowsiness_level=4))

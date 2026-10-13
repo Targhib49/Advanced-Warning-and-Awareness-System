@@ -71,6 +71,68 @@ class NullAudioOut:
         pass
 
 
+class BrowserAudioOut:
+    """The dashboard page as the speaker — a demo stand-in for a device with
+    no speaker of its own (see awas.display.server).
+
+    Decides nothing: it hands the executor's chosen clips to the display
+    server and reports their real length, so the executor's rule about what
+    may interrupt what holds exactly as it does on the device. The latency
+    is not knowable from here (the page plays it after its next poll, ~0.2 s)
+    and is reported as -1 rather than a number that looks measured.
+    """
+
+    def __init__(self, phrase_dir: Path, display) -> None:
+        self.dir = Path(phrase_dir)
+        manifest = json.loads((self.dir / "manifest.json").read_text())
+        self.files: Dict[str, Path] = {}
+        self.duration_ms: Dict[str, float] = {}
+        for clip_id, meta in manifest.items():
+            path = self.dir / meta["file"]
+            if not path.exists():
+                continue
+            with wave.open(str(path), "rb") as w:
+                self.duration_ms[clip_id] = 1000.0 * w.getnframes() / w.getframerate()
+            self.files[clip_id] = path
+        self.display = display
+        display.enable_sound(self.files)
+        self._busy_until = 0.0
+
+    def play(self, clip_ids: List[str]) -> Playback:
+        if not clip_ids or any(c not in self.files for c in clip_ids):
+            return Playback(clip_id="+".join(clip_ids), latency_ms=-1.0, duration_ms=0.0,
+                            played=False)
+        self.display.play_sound(clip_ids)
+        dur = sum(self.duration_ms[c] for c in clip_ids)
+        self._busy_until = time.monotonic() + dur / 1000.0
+        return Playback(clip_id="+".join(clip_ids), latency_ms=-1.0, duration_ms=dur)
+
+    def is_busy(self) -> bool:
+        return time.monotonic() < self._busy_until
+
+    def close(self) -> None:
+        pass
+
+
+class TeeAudioOut:
+    """The device's own speaker and the page together; reports the device's
+    playback, the one with a measured latency."""
+
+    def __init__(self, primary, secondary) -> None:
+        self.primary, self.secondary = primary, secondary
+
+    def play(self, clip_ids: List[str]) -> Playback:
+        self.secondary.play(clip_ids)
+        return self.primary.play(clip_ids)
+
+    def is_busy(self) -> bool:
+        return self.primary.is_busy()
+
+    def close(self) -> None:
+        self.primary.close()
+        self.secondary.close()
+
+
 class StreamAudioOut:
     """Pre-warmed output stream over an in-memory clip bank."""
 
