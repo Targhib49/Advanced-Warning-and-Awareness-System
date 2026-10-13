@@ -3,6 +3,10 @@
 #
 #   --headless         no debug window; the dashboard is the screen
 #   --dashboard 8095   centre-screen app at http://awas.local:8095
+#   --setup            start on "Who's driving?": register, consent, guided
+#                      calibration (camera shown only then), then drive.
+#                      Add --driver <id> to skip straight to a calibrated driver;
+#                      without --setup, --driver <name> is the old fixed-driver mode
 #   --sim              speed, steering and lane from the ETS2 bridge (UDP 8097)
 #   --mute             decide and log, but stay silent
 #   --condition A-D    experimental condition (see --conditions)
@@ -16,4 +20,4 @@
 #
 # While no simulator is connected the speed is the manual demo speed, changed
 # with [ and ] on the dashboard page; a connected ETS2 bridge takes over.
-AWAS_ARGS="--driver default --condition C --headless --dashboard 8095 --sim"
+AWAS_ARGS="--setup --condition C --headless --dashboard 8095 --sim"

@@ -30,8 +30,17 @@ def choose_screen(
     calibrating: bool,
     held_reason: Optional[str] = None,
     lane_available: bool = False,
+    camera_ok: bool = True,
 ) -> str:
-    """Pick the screen key. Order matters: safety outranks bookkeeping."""
+    """Pick the screen key. Order matters: safety outranks bookkeeping.
+
+    A missing camera outranks everything — even the parked summary — because
+    it is a fault someone has to fix before AWAS can do its job, and a calm
+    trip screen would hide it. (It cannot hide a critical level: with no face
+    the level is capped at 3, plan §5.4.)
+    """
+    if not camera_ok:
+        return "nocamera"
     if driving_state in PARKED_STATES:
         return "parked"
     if level >= 4:
@@ -125,13 +134,16 @@ def snapshot(
     sdlp_m: Optional[float] = None,
     sdlp_baseline_m: Optional[float] = None,
     fused=None,                   # awas.fusion.core.FusedEstimate
+    camera_ok: bool = True,
 ) -> Dict:
     """Everything the page needs, as plain JSON."""
     now = time.time() if now is None else now
     worst = trip.worst()
     return {
         "screen": choose_screen(driving_state, level, driver.face_present,
-                                driver.calibrating, held_reason, lane_available),
+                                driver.calibrating, held_reason, lane_available,
+                                camera_ok),
+        "camera_ok": camera_ok,
         "level": level,
         "clock": _hhmm(now),
         "driving_state": driving_state.value,

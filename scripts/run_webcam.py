@@ -19,10 +19,11 @@ from collections import deque
 from pathlib import Path
 
 from awas.companion.dialogue import DialogueManager
-from awas.core.actions import ActionType
+from awas.core.actions import Action, ActionType
 from awas.core.machine import StateMachine
 from awas.core.states import DrivingState
 from awas.display.model import TripTracker, is_display_worthy, snapshot
+from awas.driver.guided import frame_from
 from awas.driver.ear import MEDIAPIPE_LEFT_EYE, MEDIAPIPE_RIGHT_EYE
 from awas.runtime.conditions import describe_all, get as get_condition
 from awas.runtime.executor import ActionExecutor
@@ -118,10 +119,37 @@ def overlay_frame(cv2, raw, state, sm, telemetry, log, fps, mirror=True, fused=N
     return frame
 
 
-def _apply_commands(display, src, session, t, log, kss_given):
-    """Drain what the screen sent. Speed and ignition stand in for GPS and the
-    ignition line until the vehicle signals exist; a KSS tap is ground truth."""
+FLOW_COMMANDS = {"new_driver", "name", "consent", "select_driver", "delete_driver",
+                 "calibrate", "start", "back", "switch_driver"}
+
+
+def _drain(display) -> list:
+    out = []
     while (cmd := display.next_command()) is not None:
+        out.append(cmd)
+    return out
+
+
+def calibration_frame(cv2, raw, obs, checks):
+    """What the driver sees while calibrating: themselves, mirrored, with a
+    guide oval that turns green when every position check passes."""
+    frame = cv2.flip(raw, 1)
+    h, w = frame.shape[:2]
+    ok = bool(checks) and all(checks.values())
+    colour = (155, 211, 56) if ok else (62, 122, 242)
+    cv2.ellipse(frame, (w // 2, int(h * 0.45)), (int(w * 0.17), int(h * 0.30)), 0, 0, 360, colour, 2)
+    if obs is not None and obs.face_present and obs.landmarks:
+        for idx in list(MEDIAPIPE_LEFT_EYE) + list(MEDIAPIPE_RIGHT_EYE):
+            x, y = obs.landmarks[idx]
+            cv2.circle(frame, (int(w - x), int(y)), 2, colour, -1)
+    return frame
+
+
+def _apply_commands(commands, src, session, t, log, kss_given):
+    """Apply what the screen sent while driving. Speed and ignition stand in
+    for GPS and the ignition line until the vehicle signals exist; a KSS tap
+    is ground truth."""
+    for cmd in commands:
         if "speed_delta" in cmd:
             src.speed_kmh = max(0.0, src.speed_kmh + float(cmd["speed_delta"]))
         if "ignition" in cmd:
@@ -140,7 +168,12 @@ def _apply_commands(display, src, session, t, log, kss_given):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="AWAS Phase 1 webcam demo.")
-    ap.add_argument("--driver", default="default")
+    ap.add_argument("--driver", default=None,
+                    help="driver id. Without --setup: who is driving (default 'default'). "
+                         "With --setup: skip the screens and start as this calibrated driver")
+    ap.add_argument("--setup", action="store_true",
+                    help="with --dashboard: start on 'Who's driving?' — select or register a "
+                         "driver, consent, guided calibration — before any driving")
     ap.add_argument("--video", default=None, help="run on a file instead of the camera")
     ap.add_argument("--camera", type=int, default=0)
     ap.add_argument("--profiles", default="data/profiles")
@@ -179,8 +212,11 @@ def main() -> None:
     if args.conditions:
         print(describe_all())
         return
+    if args.setup and not args.dashboard:
+        raise SystemExit("--setup needs --dashboard: the screens are where a driver registers.")
 
     condition = get_condition(args.condition)
+    profiles_dir = Path(args.profiles)
 
     import cv2
 
@@ -215,10 +251,19 @@ def main() -> None:
     else:
         print("eye signal: EAR only (control condition)")
 
+    # With --setup nobody is driving yet: the pipeline runs as a placeholder
+    # whose observations are never saved, until a driver presses Start.
+    flow = None
+    if args.setup:
+        from awas.runtime.drivers import DriverRegistry
+        from awas.runtime.setup_flow import SetupFlow
+        flow = SetupFlow(DriverRegistry(profiles_dir.parent))
+    first_driver = "setup" if flow else (args.driver or "default")
+
     src = WebcamSource(
         camera_index=args.video if args.video else args.camera,
-        driver_name=args.driver,
-        profile_dir=Path(args.profiles),
+        driver_name=first_driver,
+        profile_dir=None if flow else profiles_dir,
         model_path=model,
         road=road,
         eye_model=eye_model,
@@ -234,21 +279,28 @@ def main() -> None:
         print(f"audio unavailable ({exc}); continuing muted")
         audio = NullAudioOut()
 
-    session = None if args.no_log else SessionLog(
-        Path(args.sessions), driver=args.driver,
-        config={
-            "source": args.video or f"camera{args.camera}",
-            "muted": args.mute,
-            "condition": condition.id,
-            "condition_name": condition.name,
-            # What produced the numbers, so sessions run differently are never
-            # pooled by accident.
-            "eye_signal": "cnn" if eye_model else "ear",
-            "eye_model": args.eye_model if eye_model else None,
-            "fusion": args.fusion,
-            "road": "sim" if args.sim else "manual",
-        },
-    )
+    def new_session(driver_id: str, eye_signal: str):
+        if args.no_log:
+            return None
+        return SessionLog(
+            Path(args.sessions), driver=driver_id,
+            config={
+                "source": args.video or f"camera{args.camera}",
+                "muted": args.mute,
+                "condition": condition.id,
+                "condition_name": condition.name,
+                # What produced the numbers, so sessions run differently are
+                # never pooled by accident.
+                "eye_signal": eye_signal,
+                "eye_model": args.eye_model if eye_signal == "cnn" else None,
+                "fusion": args.fusion,
+                "road": "sim" if args.sim else "manual",
+                "registered": flow is not None,
+            },
+        )
+
+    # A session is one driver's trip; with --setup it starts on Start.
+    session = None if flow else new_session(first_driver, "cnn" if eye_model else "ear")
     executor = ActionExecutor(audio=audio, dialogue=DialogueManager(),
                               log=session, muted=args.mute, condition=condition)
 
@@ -260,6 +312,7 @@ def main() -> None:
     held = {"reason": None, "t": -1e9}
     kss_given = None
     sim_noted = streamed_at = -1e9
+    camera_was_ok = True          # so a camera missing at start is announced too
     if args.dashboard:
         from awas.display.server import DisplayServer
         display = DisplayServer(args.dashboard, camera_view=args.camera_view).start()
@@ -278,6 +331,31 @@ def main() -> None:
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
 
+    def handle(events, t: float) -> None:
+        """A driver starting or ending their trip, from the setup flow."""
+        nonlocal sm, trip, session, held, kss_given
+        for kind, driver in events:
+            if kind == "drive":
+                src.set_driver(driver.id, profiles_dir, driver.eye_signal)
+                sm = StateMachine(initial_state=DrivingState.MOVING)
+                trip, held, kss_given = TripTracker(), {"reason": None, "t": -1e9}, None
+                session = new_session(driver.id, driver.eye_signal if eye_model else "ear")
+                executor.log = session
+                print(f"  driving: {driver.name} ({driver.id}), eye signal {driver.eye_signal}"
+                      + (f", logging to {session.path}" if session else ""))
+            elif kind == "end_drive":
+                if session:
+                    print(f"  session log: {session.close(t=t)}")
+                session = executor.log = None
+                src.set_driver("setup", None, None)     # saves the outgoing profile first
+                print(f"  {driver.name if driver else 'driver'} finished; back to 'Who's driving?'")
+
+    if flow and args.driver:
+        try:
+            handle(flow.drive_now(args.driver), 0.0)
+        except KeyError as exc:
+            print(f"--driver: {exc}; showing 'Who's driving?' instead")
+
     if session:
         print(f"logging to {session.path}")
     print(f"condition {condition.id} — {condition.name}: {condition.description}")
@@ -285,8 +363,54 @@ def main() -> None:
     try:
         while not stopping["now"]:
             telemetry = src.read()
-            actions = sm.update(telemetry)
             state = src.last_state
+
+            if display:
+                commands = _drain(display)
+                if flow:
+                    for cmd in [c for c in commands if c.keys() & FLOW_COMMANDS]:
+                        handle(flow.command(cmd), telemetry.timestamp)
+                    commands = [c for c in commands if not c.keys() & FLOW_COMMANDS]
+                if not flow or flow.driving:
+                    kss_given = _apply_commands(commands, src, session, telemetry.timestamp,
+                                                log, kss_given)
+
+            if flow and not flow.driving:
+                # Setup screens: no alerts, no driving log. The camera reaches
+                # the display only while calibrating (plan §8).
+                if flow.camera_wanted:
+                    flow.feed(frame_from(src.last_obs, src.last_frame if src.camera_ok else None),
+                              profiles_dir)
+                display.set_camera_live(flow.camera_wanted)
+                if flow.camera_wanted and src.last_frame is not None and src.camera_ok \
+                        and telemetry.timestamp - streamed_at >= 1.0 / CAMERA_VIEW_FPS:
+                    streamed_at = telemetry.timestamp
+                    frame = calibration_frame(cv2, src.last_frame, src.last_obs,
+                                              flow.calibration.checks if flow.calibration else {})
+                    ok, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                    if ok:
+                        display.publish_frame(jpg.tobytes())
+                snap = flow.snapshot()
+                snap["camera_ok"] = src.camera_ok
+                display.publish(snap)
+                continue
+
+            actions = sm.update(telemetry)
+
+            # Losing the camera is a monitoring failure the driver must hear
+            # about once, not a silent stretch of "no face" (plan §5.4).
+            if src.camera_ok != camera_was_ok:
+                camera_was_ok = src.camera_ok
+                note = "camera connected" if src.camera_ok else "camera LOST — not monitoring the driver"
+                print(f"  t={telemetry.timestamp:6.1f} {note}")
+                log.append(f"t={telemetry.timestamp:6.1f} {note}")
+                if session:
+                    session.annotation(telemetry.timestamp, kind="camera",
+                                       value="connected" if src.camera_ok else "lost")
+                if not src.camera_ok:
+                    actions = actions + [Action(type=ActionType.ALERT, urgency=3,
+                                                alert_id="monitoring_lost",
+                                                message="reflex alert: monitoring_lost (camera)")]
 
             performed = executor.execute(
                 actions, t=telemetry.timestamp, telemetry=telemetry,
@@ -311,11 +435,10 @@ def main() -> None:
                 session.sample(telemetry.timestamp, state, telemetry, fused=src.last_fused)
 
             if display:
-                kss_given = _apply_commands(display, src, session, telemetry.timestamp, log, kss_given)
                 level = sm.effective_level(telemetry)
                 trip.update(telemetry.timestamp, level, telemetry.speed_kmh,
                             moving=sm.state in (DrivingState.MOVING, DrivingState.TRAFFIC_JAM))
-                display.publish(snapshot(
+                snap = snapshot(
                     driving_state=sm.state, level=level, driver=state,
                     speed_kmh=telemetry.speed_kmh, workload=telemetry.workload,
                     lane_available=telemetry.sdlp is not None,
@@ -324,7 +447,12 @@ def main() -> None:
                     sdlp_m=telemetry.sdlp,
                     sdlp_baseline_m=src.sdlp_baseline.baseline_m if src.sdlp_baseline else None,
                     fused=src.last_fused,
-                ))
+                    camera_ok=src.camera_ok,
+                )
+                snap["mode"] = "driving"
+                snap["driver"] = flow.driver.name if flow and flow.driver else None
+                snap["can_switch_driver"] = flow is not None
+                display.publish(snap)
 
             if road is not None and telemetry.timestamp - sim_noted >= 10.0:
                 sim_noted = telemetry.timestamp

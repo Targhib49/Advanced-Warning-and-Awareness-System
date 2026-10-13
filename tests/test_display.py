@@ -102,6 +102,11 @@ class TestServer:
         assert b"drawScreen" in page and b"export function drawScreen" in js
         assert state == {"screen": "monitoring", "level": 0}
 
+    def test_state_carries_the_page_version(self, server):
+        server.publish({"screen": "monitoring"})
+        r = urllib.request.urlopen(self._url(server, "/state"))
+        assert r.headers["X-AWAS-UI"] == server.ui_version() and "-" in r.headers["X-AWAS-UI"]
+
     def test_accepts_known_commands(self, server):
         req = urllib.request.Request(self._url(server, "/command"), data=b'{"kss": 6}',
                                      headers={"Content-Type": "application/json"})

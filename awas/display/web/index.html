@@ -8,21 +8,78 @@
 <title>AWAS</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&family=Barlow+Semi+Condensed:wght@700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
+  :root {
+    --bg: #0B0D0E; --panel: #15191C; --track: #22292D; --ink: #E8EDEF; --muted: #8E9BA1;
+    --green: #38D39B; --amber: #E0A93C; --orange: #F27A3E; --red: #E5483A; --slate: #8A9AA2;
+    --display: 'Barlow Semi Condensed', 'Arial Narrow', sans-serif;
+    --body: 'Barlow', system-ui, sans-serif; --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
   body { display: flex; align-items: center; justify-content: center; }
   canvas { display: block; touch-action: manipulation; }
-  #help { position: fixed; left: 12px; bottom: 10px; color: #8E9BA1; font: 13px ui-monospace, monospace;
-          background: rgba(0,0,0,.7); padding: 6px 10px; border-radius: 6px; display: none; }
+  #help { position: fixed; left: 12px; bottom: 10px; color: var(--muted); font: 13px var(--mono);
+          background: rgba(0,0,0,.7); padding: 6px 10px; border-radius: 6px; display: none; z-index: 5; }
+
+  /* The setup screens share the 1024 x 600 stage of the driving screens. */
+  #setup { position: absolute; left: 50%; top: 50%; width: 1024px; height: 600px; box-sizing: border-box;
+           transform-origin: center; background: var(--bg); color: var(--ink); font: 500 24px var(--body);
+           padding: 40px; display: none; flex-direction: column; overflow: hidden; }
+  #setup .band { position: absolute; left: 0; top: 0; right: 0; height: 10px; background: var(--slate); }
+  #setup .status { display: flex; justify-content: space-between; font: 500 20px var(--mono); color: var(--muted); }
+  #setup h1 { font: 700 76px/1 var(--display); margin: 26px 0 16px; letter-spacing: -0.01em; }
+  #setup p { margin: 0 0 14px; color: var(--ink); }
+  #setup .muted { color: var(--muted); }
+  #setup .err { color: var(--orange); min-height: 30px; }
+  #setup .row { display: flex; gap: 16px; margin-top: auto; }
+  #setup button { font: 600 26px var(--body); color: var(--ink); background: var(--track); border: 0;
+                  border-radius: 14px; padding: 16px 28px; cursor: pointer; }
+  #setup button.primary { background: var(--green); color: var(--bg); }
+  #setup button:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+  #setup input { font: 600 34px var(--body); color: var(--ink); background: var(--panel); border: 2px solid var(--track);
+                 border-radius: 14px; padding: 14px 18px; width: 60%; outline: none; }
+  #setup input:focus { border-color: var(--green); }
+  #setup ul { list-style: none; padding: 0; margin: 0; }
+  #setup .drivers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; overflow-y: auto; max-height: 330px; }
+  #setup .driver { display: flex; align-items: center; background: var(--panel); border-radius: 14px; }
+  #setup .driver button.pick { flex: 1; text-align: left; background: none; padding: 18px 20px; }
+  #setup .driver .chip { display: block; font: 500 16px var(--mono); color: var(--muted); margin-top: 4px; }
+  #setup .driver .chip.ready { color: var(--green); }
+  #setup .driver button.del { background: none; color: var(--muted); font-size: 22px; padding: 14px 18px; }
+  #setup .consent li { margin: 0 0 12px 0; padding-left: 26px; position: relative; font-size: 22px; }
+  #setup .consent li::before { content: ""; position: absolute; left: 0; top: 12px; width: 10px; height: 10px;
+                               border-radius: 50%; background: var(--green); }
+  /* calibration */
+  #setup .cal { display: flex; gap: 32px; flex: 1; min-height: 0; margin-top: 20px; }
+  #setup .cam { position: relative; width: 560px; height: 420px; background: #000; border-radius: 14px; overflow: hidden; }
+  #setup .cam img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #setup .cam .live { position: absolute; left: 14px; top: 12px; font: 500 16px var(--mono); color: #fff;
+                      background: rgba(229,72,58,.85); padding: 4px 10px; border-radius: 6px; }
+  #setup .cam .none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+                      color: var(--orange); font: 600 26px var(--body); text-align: center; padding: 30px; }
+  #setup .side { flex: 1; display: flex; flex-direction: column; }
+  #setup .step { font: 500 18px var(--mono); color: var(--muted); letter-spacing: .08em; }
+  #setup .say { font: 600 32px/1.2 var(--body); margin: 10px 0 18px; }
+  #setup .checks li { font: 500 21px var(--body); margin-bottom: 8px; color: var(--muted); }
+  #setup .checks li.ok { color: var(--green); }
+  #setup .bar { height: 14px; background: var(--track); border-radius: 7px; margin: 14px 0 10px; overflow: hidden; }
+  #setup .bar > div { height: 100%; background: var(--green); width: 0; transition: width .2s; }
+  #setup .stats { font: 500 18px var(--mono); color: var(--muted); }
+  #switch { position: fixed; right: 18px; bottom: 16px; font: 600 18px var(--body); color: var(--ink);
+            background: rgba(34,41,45,.92); border: 0; border-radius: 10px; padding: 10px 16px; display: none; z-index: 4; }
 </style>
 </head>
 <body>
 <canvas id="screen"></canvas>
-<div id="help">[ ] speed &nbsp; i ignition / park &nbsp; 1-9 KSS (parked) &nbsp; l language &nbsp; f full screen &nbsp; ? hide</div>
+<div id="setup"></div>
+<button id="switch"></button>
+<div id="help">[ ] speed &nbsp; i ignition / park &nbsp; 1-9 KSS (parked) &nbsp; d switch driver (parked) &nbsp; l language &nbsp; f full screen &nbsp; ? hide</div>
 <script type="module">
 import { drawScreen, kssButtonAt, TEXT, W, H } from "/app-screens.js";
 
 const canvas = document.getElementById("screen");
 const ctx = canvas.getContext("2d");
+const setupEl = document.getElementById("setup");
+const switchBtn = document.getElementById("switch");
 const params = new URLSearchParams(location.search);
 let lang = params.get("lang") === "en" ? "en" : "id";
 let snap = null, lastOk = 0, scale = 1;
@@ -41,7 +98,7 @@ const L10N = {
     weave: (sdlp, base) => base == null
       ? `Oleng ${cm(sdlp)} cm (SDLP ${sdlp.toFixed(2).replace(".", ",")} m), belum ada patokan pribadi`
       : `Oleng ${cm(sdlp - base)} cm lebih dari biasanya (SDLP ${sdlp.toFixed(2).replace(".", ",")} m)`,
-    worst: "terparah", lost: "Tidak terhubung ke AWAS",
+    worst: "terparah", lost: "Tidak terhubung ke AWAS", switchDriver: "Ganti pengemudi",
   },
   en: {
     kmh: v => `${v} km/h`,
@@ -55,10 +112,72 @@ const L10N = {
     weave: (sdlp, base) => base == null
       ? `Weaving ${cm(sdlp)} cm (SDLP ${sdlp.toFixed(2)} m), no personal baseline yet`
       : `Weaving ${cm(sdlp - base)} cm more than your usual (SDLP ${sdlp.toFixed(2)} m)`,
-    worst: "worst", lost: "No connection to AWAS",
+    worst: "worst", lost: "No connection to AWAS", switchDriver: "Switch driver",
   },
 };
 const cm = m => Math.max(0, Math.round(m * 100));
+
+// The screens before driving (awas/runtime/setup_flow.py).
+const SETUP = {
+  id: {
+    status: "AWAS · PENGATURAN", noCamera: "Kamera tidak terhubung. Periksa kabelnya.",
+    select: "Siapa yang mengemudi?", none: "Belum ada pengemudi terdaftar.",
+    ready: "siap", needsCal: "perlu kalibrasi", newDriver: "+ Pengemudi baru",
+    confirmDelete: n => `Hapus ${n} beserta profil mata dan semua catatan perjalanannya?`,
+    newTitle: "Pengemudi baru", namePrompt: "Nama Anda", next: "Lanjut", back: "Kembali",
+    consentTitle: "Persetujuan",
+    consent: [
+      "Kamera melihat wajah Anda untuk mendeteksi kantuk. Gambar diproses di perangkat ini dan tidak disimpan.",
+      "Selama kalibrasi, gambar kamera ditampilkan di layar ini agar Anda bisa mengatur posisi. Setelah itu tidak lagi.",
+      "Yang disimpan: nama Anda, ukuran mata pribadi (angka, bukan gambar), dan catatan perjalanan.",
+      "Anda bisa menghapus semua data Anda kapan saja dari layar “Siapa yang mengemudi?”.",
+    ],
+    agree: "Setuju", disagree: "Tidak setuju",
+    camLive: "● KAMERA AKTIF", cancel: "Batal",
+    steps: { position: "1 · POSISI", open: "2 · MATA TERBUKA", closed: "3 · MATA TERTUTUP" },
+    say: {
+      position: "Duduk seperti saat mengemudi. Masukkan wajah ke dalam oval.",
+      open: "Lihat lurus ke depan dengan mata terbuka. Berkedip seperti biasa.",
+      closed: "Pejamkan mata sekitar 3 detik, lalu buka kembali.",
+      closing: "Bagus, tahan sebentar…", paused: "Hadap kembali ke kamera.",
+    },
+    checks: { face: "Wajah terlihat", distance: "Cukup dekat", facing: "Menghadap kamera", light: "Cahaya cukup" },
+    round: (n, of) => `Putaran ${Math.min(n + 1, of)} dari ${of}`,
+    hello: n => `Halo, ${n}`, start: "Mulai mengemudi", recal: "Kalibrasi ulang", notMe: "Bukan saya",
+    signal: s => s === "cnn" ? "Sinyal mata: model CNN (terlatih)" : "Sinyal mata: EAR (rasio mata)",
+    doneTitle: "Kalibrasi selesai", failTitle: "Kalibrasi belum berhasil", retry: "Coba lagi",
+  },
+  en: {
+    status: "AWAS · SETUP", noCamera: "Camera not connected. Check the cable.",
+    select: "Who's driving?", none: "No drivers registered yet.",
+    ready: "ready", needsCal: "needs calibration", newDriver: "+ New driver",
+    confirmDelete: n => `Delete ${n}, their eye profile and all their trip logs?`,
+    newTitle: "New driver", namePrompt: "Your name", next: "Next", back: "Back",
+    consentTitle: "Consent",
+    consent: [
+      "The camera watches your face to detect drowsiness. Images are processed on this device and never stored.",
+      "During calibration the camera image is shown on this screen so you can get into position. Not after.",
+      "What is kept: your name, your personal eye scale (numbers, not images), and your trip logs.",
+      "You can delete all of it at any time from the “Who's driving?” screen.",
+    ],
+    agree: "I agree", disagree: "I don't agree",
+    camLive: "● CAMERA ON", cancel: "Cancel",
+    steps: { position: "1 · POSITION", open: "2 · EYES OPEN", closed: "3 · EYES CLOSED" },
+    say: {
+      position: "Sit as you would to drive. Get your face inside the oval.",
+      open: "Look straight ahead with your eyes open. Blink as usual.",
+      closed: "Close your eyes for about 3 seconds, then open them.",
+      closing: "Good, hold it…", paused: "Face the camera again.",
+    },
+    checks: { face: "Face visible", distance: "Close enough", facing: "Facing the camera", light: "Enough light" },
+    round: (n, of) => `Round ${Math.min(n + 1, of)} of ${of}`,
+    hello: n => `Hello, ${n}`, start: "Start driving", recal: "Calibrate again", notMe: "Not me",
+    signal: s => s === "cnn" ? "Eye signal: CNN model (learned)" : "Eye signal: EAR (eye ratio)",
+    doneTitle: "Calibration done", failTitle: "Calibration didn't work", retry: "Try again",
+  },
+};
+
+// ---------------------------------------------------------------- driving screens
 
 function liveFor(s) {
   const X = L10N[lang], T = TEXT[lang];
@@ -75,6 +194,13 @@ function liveFor(s) {
       Object.assign(live.text, { word: T[own].word, line: X.held(s.held_reason) });
       break;
     }
+    case "nocamera":
+      // Say which channel, if any, is still watching.
+      live.channel = s.lane ? T.channels[1] : T.noChannel;
+      if (s.lane) live.text.note = lang === "id"
+        ? "Periksa kabel kamera. Lajur tetap dipantau."
+        : "Check the camera cable. The lane is still monitored.";
+      break;
     case "occluded":
       // Lane only: the face is gone, the vehicle channel carries on, capped.
       Object.assign(live, { level: s.level, channel: undefined });
@@ -105,12 +231,22 @@ function resize() {
   canvas.width = Math.round(W * scale * dpr);
   canvas.height = Math.round(H * scale * dpr);
   ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  setupEl.style.transform = `translate(-50%, -50%) scale(${scale})`;
   render();
 }
 
 function render() {
+  const linkUp = snap && Date.now() - lastOk <= 2500;
+  const inSetup = linkUp && snap.mode === "setup";
+  setupEl.style.display = inSetup ? "flex" : "none";
+  canvas.style.display = inSetup ? "none" : "block";
+  switchBtn.style.display = linkUp && !inSetup && snap.screen === "parked" && snap.can_switch_driver ? "block" : "none";
+  switchBtn.textContent = L10N[lang].switchDriver;
+  if (inSetup) { renderSetup(snap); return; }
+  setupSig = "";            // rebuild the setup screen next time it appears
+  stopCamera();
   ctx.clearRect(0, 0, W, H);
-  if (!snap || Date.now() - lastOk > 2500) {
+  if (!linkUp) {
     // Losing the link is a degradation-ladder row, not a failure (plan §7.5).
     ctx.fillStyle = "#0B0D0E"; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "#8E9BA1"; ctx.font = "500 28px 'IBM Plex Mono', monospace"; ctx.textAlign = "center";
@@ -120,20 +256,138 @@ function render() {
   drawScreen(ctx, snap.screen, lang, liveFor(snap));
 }
 
-let sized = "";
+// ---------------------------------------------------------------- setup screens
+
+let setupSig = "";
+
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "onclick") e.addEventListener("click", v);
+    else if (k === "class") e.className = v;
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids) e.append(k);          // strings become text nodes: names are never parsed as HTML
+  return e;
+}
+
+function stopCamera() {
+  const img = setupEl.querySelector(".cam img");
+  if (img) img.removeAttribute("src");        // closes the stream
+}
+
+function renderSetup(s) {
+  const S = SETUP[lang];
+  // Rebuild only when the screen itself changes, so typing and focus survive
+  // the 200 ms polling; calibration progress is updated in place below.
+  const sig = JSON.stringify([s.screen, lang, s.error, s.drivers, s.driver, s.result, s.camera_ok]);
+  if (sig !== setupSig) {
+    setupSig = sig;
+    stopCamera();
+    setupEl.replaceChildren(...buildSetup(s, S));
+    setupEl.querySelector("input, button.primary")?.focus();
+  }
+  if (s.screen === "calibrating") updateCalibration(s, S);
+}
+
+function buildSetup(s, S) {
+  const head = [el("div", { class: "band" }),
+                el("div", { class: "status" }, el("span", {}, S.status), el("span", {}, s.driver?.name ?? ""))];
+  const err = el("div", { class: "err" }, s.error || (s.camera_ok === false && s.screen !== "calibrating" ? S.noCamera : ""));
+  switch (s.screen) {
+    case "select": {
+      const list = s.drivers?.length
+        ? el("ul", { class: "drivers" }, ...s.drivers.map(d => el("li", { class: "driver" },
+            el("button", { class: "pick", onclick: () => send({ select_driver: d.id }) },
+               d.name, el("span", { class: d.calibrated ? "chip ready" : "chip" }, d.calibrated ? S.ready : S.needsCal)),
+            el("button", { class: "del", "aria-label": "delete", onclick: () => {
+              if (confirm(S.confirmDelete(d.name))) send({ delete_driver: d.id });
+            } }, "✕"))))
+        : el("p", { class: "muted" }, S.none);
+      return [...head, el("h1", {}, S.select), list, err,
+              el("div", { class: "row" }, el("button", { class: "primary", onclick: () => send({ new_driver: true }) }, S.newDriver))];
+    }
+    case "new": {
+      const input = el("input", { maxlength: "24", placeholder: S.namePrompt, autocomplete: "off", spellcheck: "false" });
+      const submit = () => send({ name: input.value });
+      input.addEventListener("keydown", e => { if (e.key === "Enter") submit(); else if (e.key === "Escape") send({ back: true }); });
+      return [...head, el("h1", {}, S.newTitle), input, el("div", { class: "err" }, s.error || ""),
+              el("div", { class: "row" }, el("button", { class: "primary", onclick: submit }, S.next),
+                                          el("button", { onclick: () => send({ back: true }) }, S.back))];
+    }
+    case "consent":
+      return [...head, el("h1", {}, S.consentTitle),
+              el("ul", { class: "consent" }, ...S.consent.map(t => el("li", {}, t))),
+              el("div", { class: "row" }, el("button", { class: "primary", onclick: () => send({ consent: true }) }, S.agree),
+                                          el("button", { onclick: () => send({ consent: false }) }, S.disagree))];
+    case "ready":
+      return [...head, el("h1", {}, S.hello(s.driver.name)), el("p", { class: "muted" }, S.signal(s.driver.eye_signal)), err,
+              el("div", { class: "row" }, el("button", { class: "primary", onclick: () => send({ start: true }) }, S.start),
+                                          el("button", { onclick: () => send({ calibrate: true }) }, S.recal),
+                                          el("button", { onclick: () => send({ back: true }) }, S.notMe))];
+    case "calibrating": {
+      const cam = el("div", { class: "cam" });
+      if (s.camera_ok === false) cam.append(el("div", { class: "none" }, S.noCamera));
+      else cam.append(el("img", { src: "/camera.mjpg", alt: "" }), el("span", { class: "live" }, S.camLive));
+      const checks = el("ul", { class: "checks" }, ...Object.keys(S.checks).map(k => el("li", { "data-k": k }, S.checks[k])));
+      const side = el("div", { class: "side" },
+        el("div", { class: "step" }), el("div", { class: "say" }), checks,
+        el("div", { class: "bar" }, el("div")), el("div", { class: "stats" }),
+        el("div", { class: "row" }, el("button", { onclick: () => send({ back: true }) }, S.cancel)));
+      return [...head, el("div", { class: "cal" }, cam, side)];
+    }
+    case "result": {
+      const r = s.result || {};
+      const pct = v => v == null ? "—" : `${Math.round(v * 100)}%`;
+      const detail = r.ok
+        ? `EAR ${r.open_ear?.toFixed(3)} / ${r.closed_ear?.toFixed(3)}  ·  CNN ${pct(r.cnn_accuracy)}`
+        : (r.reason || "");
+      return [...head, el("h1", {}, r.ok ? S.doneTitle : S.failTitle),
+              el("p", {}, r.ok ? S.signal(r.eye_signal) : ""), el("p", { class: "muted" }, detail), err,
+              el("div", { class: "row" },
+                 r.ok ? el("button", { class: "primary", onclick: () => send({ start: true }) }, S.start)
+                      : el("button", { class: "primary", onclick: () => send({ calibrate: true }) }, S.retry),
+                 r.ok ? el("button", { onclick: () => send({ calibrate: true }) }, S.recal)
+                      : el("button", { onclick: () => send({ back: true }) }, S.back))];
+    }
+  }
+  return head;
+}
+
+function updateCalibration(s, S) {
+  const c = s.calibration;
+  if (!c) return;
+  setupEl.querySelector(".step").textContent = S.steps[c.step] ?? "";
+  setupEl.querySelector(".say").textContent =
+    c.paused ? S.say.paused : c.closing ? S.say.closing : (S.say[c.step] ?? "");
+  for (const li of setupEl.querySelectorAll(".checks li")) li.classList.toggle("ok", !!c.checks[li.dataset.k]);
+  setupEl.querySelector(".bar > div").style.width = `${Math.round(c.progress * 100)}%`;
+  setupEl.querySelector(".stats").textContent = c.step === "closed" ? S.round(c.rounds, c.rounds_needed) : "";
+}
+
+// ---------------------------------------------------------------- plumbing
+
+let sized = "", uiVersion = null;
 async function poll() {
   // A kiosk window can reach full screen without a resize event; check every tick.
   const now = `${innerWidth}x${innerHeight}@${window.devicePixelRatio}`;
   if (now !== sized) { sized = now; resize(); }
   try {
     const r = await fetch("/state", { cache: "no-store" });
+    // The device was updated while this page was open: load the new page
+    // rather than draw new screens with old code (a kiosk is never reloaded
+    // by hand).
+    const v = r.headers.get("X-AWAS-UI");
+    if (v && uiVersion && v !== uiVersion) { location.reload(); return; }
+    uiVersion = v || uiVersion;
     if (r.ok) { const s = await r.json(); if (s.screen) { snap = s; lastOk = Date.now(); } }
   } catch (_) { /* the device may be restarting */ }
   render();
 }
 
 function send(cmd) {
-  fetch("/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cmd) });
+  fetch("/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cmd) })
+    .then(() => setTimeout(poll, 60));
 }
 
 canvas.addEventListener("click", e => {
@@ -142,14 +396,18 @@ canvas.addEventListener("click", e => {
   const k = kssButtonAt((e.clientX - r.left) / scale, (e.clientY - r.top) / scale);
   if (k) send({ kss: k });
 });
+switchBtn.addEventListener("click", () => send({ switch_driver: true }));
 
 addEventListener("keydown", e => {
+  if (e.target instanceof HTMLInputElement) return;        // typing a name is not a shortcut
   const help = document.getElementById("help");
-  if (e.key === "[") send({ speed_delta: -10 });
-  else if (e.key === "]") send({ speed_delta: 10 });
-  else if (e.key === "i") send({ ignition: "toggle" });
-  else if (/^[1-9]$/.test(e.key) && snap?.screen === "parked") send({ kss: Number(e.key) });
-  else if (e.key === "l") { lang = lang === "id" ? "en" : "id"; render(); }
+  const driving = snap && snap.mode !== "setup";
+  if (driving && e.key === "[") send({ speed_delta: -10 });
+  else if (driving && e.key === "]") send({ speed_delta: 10 });
+  else if (driving && e.key === "i") send({ ignition: "toggle" });
+  else if (driving && /^[1-9]$/.test(e.key) && snap.screen === "parked") send({ kss: Number(e.key) });
+  else if (driving && e.key === "d" && snap.screen === "parked" && snap.can_switch_driver) send({ switch_driver: true });
+  else if (e.key === "l") { lang = lang === "id" ? "en" : "id"; setupSig = ""; render(); }
   else if (e.key === "f") document.documentElement.requestFullscreen?.();
   else if (e.key === "?") help.style.display = help.style.display === "block" ? "none" : "block";
 });

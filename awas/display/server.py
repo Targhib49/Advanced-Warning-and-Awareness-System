@@ -9,10 +9,15 @@ frames, never landmarks) and can send back only what a driver would press on a
 screen: a KSS rating, plus demo controls for speed and ignition while there is
 no GPS. Losing the page costs nothing but the page.
 
-The one exception is opt-in and for demos: with `camera_view=True` the debug
-view (camera, eye points, readout) is served at /camera. That sends images of
-the driver off the device, which §8 otherwise forbids, so it is off unless
-asked for and should be used only with the consent of whoever is on camera.
+Two exceptions send camera images to the page, both bounded:
+
+* During guided calibration (`set_camera_live(True)`) the driver sees
+  themselves to get into position. They have just consented, and the stream
+  stops the moment calibration ends — an open stream is cut, not left running.
+* `camera_view=True`, opt-in and for demos: the debug view (camera, eye
+  points, readout) at /camera. That sends images of the driver off the device,
+  which §8 otherwise forbids, so use it only with the consent of whoever is
+  on camera.
 """
 
 from __future__ import annotations
@@ -29,7 +34,11 @@ WEB_DIR = Path(__file__).parent / "web"
 # The renderer is shared with the rev-B mockup so the two cannot drift apart.
 SCREENS_JS = Path(__file__).resolve().parents[2] / "hardware" / "rev-b" / "mockup" / "app-screens.js"
 
-_ALLOWED_COMMANDS = {"speed_delta", "ignition", "kss"}
+_ALLOWED_COMMANDS = {
+    "speed_delta", "ignition", "kss",                       # driving
+    "new_driver", "name", "consent", "select_driver",       # who's driving (setup_flow)
+    "delete_driver", "calibrate", "start", "back", "switch_driver",
+}
 
 _CAMERA_PAGE = b"""<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <meta name="google" content="notranslate"><title>AWAS camera</title>
@@ -48,6 +57,7 @@ class DisplayServer:
         self._frame_seq = 0
         self._lock = threading.Lock()
         self.camera_view = camera_view
+        self.camera_live = False          # guided calibration only
         server = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -67,14 +77,23 @@ class DisplayServer:
                 if path == "/state":
                     with server._lock:
                         body = server._snapshot
-                    self._send(200, body, "application/json")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Cache-Control", "no-store")
+                    # Which page and renderer this server would hand out now.
+                    # A kiosk left open across an update sees it change and
+                    # reloads, instead of drawing new screens with old code.
+                    self.send_header("X-AWAS-UI", server.ui_version())
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                 elif path in ("/", "/index.html"):
                     self._send(200, (WEB_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
                 elif path == "/app-screens.js":
                     self._send(200, SCREENS_JS.read_bytes(), "text/javascript; charset=utf-8")
                 elif path == "/camera" and server.camera_view:
                     self._send(200, _CAMERA_PAGE, "text/html; charset=utf-8")
-                elif path == "/camera.mjpg" and server.camera_view:
+                elif path == "/camera.mjpg" and server.camera_allowed:
                     self._stream()
                 else:
                     self._send(404, b"not found", "text/plain")
@@ -86,7 +105,7 @@ class DisplayServer:
                 self.end_headers()
                 seen = -1
                 try:
-                    while True:
+                    while server.camera_allowed:  # cut the moment calibration ends
                         with server._lock:
                             jpg, seq = server._frame, server._frame_seq
                         if jpg is not None and seq != seen:
@@ -130,9 +149,25 @@ class DisplayServer:
         with self._lock:
             self._snapshot = body
 
+    @staticmethod
+    def ui_version() -> str:
+        """Changes whenever the page or the renderer on disk changes."""
+        return "-".join(str(int(p.stat().st_mtime_ns // 1_000_000))
+                        for p in (WEB_DIR / "index.html", SCREENS_JS))
+
+    @property
+    def camera_allowed(self) -> bool:
+        return self.camera_view or self.camera_live
+
+    def set_camera_live(self, on: bool) -> None:
+        if self.camera_live and not on:
+            with self._lock:
+                self._frame = None          # no stale image of the driver lingers
+        self.camera_live = on
+
     def publish_frame(self, jpeg: bytes) -> None:
-        """Latest debug-view frame; ignored unless camera_view is on."""
-        if not self.camera_view:
+        """Latest camera frame; ignored unless a camera view is allowed."""
+        if not self.camera_allowed:
             return
         with self._lock:
             self._frame = jpeg

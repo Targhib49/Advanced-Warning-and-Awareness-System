@@ -33,6 +33,7 @@ export const SCREENS = {
   insist:      { band: ORANGE, level: 3, bothChannels: true },
   calibrating: { band: SLATE, level: -1, bothChannels: true, progress: true },
   noface:      { band: SLATE, level: -1, bothChannels: false, note: true },
+  nocamera:    { band: ORANGE, level: -1, bothChannels: false, note: true },
 };
 
 // Every string on screen. Indonesian uses a decimal comma.
@@ -56,6 +57,8 @@ export const TEXT = {
     insist: { word: "TIDAK AMAN", line: "Cari tempat aman untuk berhenti.", foot: [] },
     calibrating: { word: "KALIBRASI", line: "Mengemudi seperti biasa. Saya sedang mempelajari mata Anda.", foot: [] },
     noface: { word: "TAK TERLIHAT", line: "Kamera tidak melihat mata Anda.", note: "Periksa kamera dan posisi duduk.", foot: [] },
+    nocamera: { word: "TANPA KAMERA", line: "Kamera tidak terhubung. Mata Anda tidak dipantau.", note: "Periksa kabel kamera.", foot: [] },
+    noChannel: "TANPA SENSOR",
   },
   en: {
     channels: ["FACE + LANE", "LANE"],
@@ -76,12 +79,14 @@ export const TEXT = {
     insist: { word: "UNSAFE", line: "Find a safe place to stop.", foot: [] },
     calibrating: { word: "CALIBRATING", line: "Drive as usual. Learning your eyes.", foot: [] },
     noface: { word: "CAN'T SEE YOU", line: "The camera can't see your eyes.", note: "Check the camera and your seating position.", foot: [] },
+    nocamera: { word: "NO CAMERA", line: "Camera not connected. Your eyes are not being monitored.", note: "Check the camera cable.", foot: [] },
+    noChannel: "NO SENSORS",
   },
 };
 
 // Light-bar colour on the device for each screen.
 export const LIGHT = { monitoring: GREEN, engaging: AMBER, gate: ORANGE, occluded: SLATE, critical: RED, parked: GREEN,
-                       tired: AMBER, insist: ORANGE, calibrating: SLATE, noface: SLATE };
+                       tired: AMBER, insist: ORANGE, calibrating: SLATE, noface: SLATE, nocamera: ORANGE };
 
 function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
 function t(c, s, x, y, font, color, align = "left", base = "alphabetic") {

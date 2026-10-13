@@ -73,15 +73,19 @@ class WebcamSource(Source):
             model_path or default_model_path()
         )
 
-        self.cap = cv2.VideoCapture(camera_index)
-        if not self.cap.isOpened():
-            raise RuntimeError(
-                f"Could not open capture source {camera_index!r}. For a camera "
-                f"on macOS, the terminal needs camera permission in "
-                f"System Settings > Privacy & Security > Camera."
-            )
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        # A live camera may be missing at start or unplugged mid-trip. That is
+        # a monitoring failure to SHOW, not a reason to exit: the dashboard and
+        # the vehicle channel keep running while the camera is retried. A video
+        # file that will not open is a mistake in the command, and still fails.
+        self.camera_index = camera_index
+        self.width, self.height = width, height
+        self.cap = None
+        self.camera_ok = False
+        self._read_failures = 0
+        self._next_open_at = 0.0
+        self._open_camera()
+        if self.cap is None and not isinstance(camera_index, int):
+            raise RuntimeError(f"Could not open video file {camera_index!r}.")
 
         # The road channel. NullRoadSource is the honest Phase 1 default: speed
         # comes from wherever the caller sets it and nothing else is known.
@@ -90,6 +94,8 @@ class WebcamSource(Source):
         self.workload_est = WorkloadEstimator()
 
         self.t0 = time.monotonic()
+        self.trip_started = 0.0      # seconds after t0 that this driver's trip began
+        self.last_obs = None
         self.speed_kmh = 60.0        # driven by the demo's keyboard controls
         self.ignition_on = True
         self.last_state: Optional[DriverState] = None
@@ -99,21 +105,76 @@ class WebcamSource(Source):
         self.last_fused = None
         self.last_lane_stats = None
 
+    # ---------------- camera ----------------
+
+    RETRY_EVERY_SEC = 2.0
+    # Consecutive failed reads before a live camera is declared gone. Isolated
+    # failures happen; a run of them at 15-30 fps is an unplugged cable.
+    FAILURES_TO_LOSE = 30
+
+    def _open_camera(self) -> bool:
+        import cv2
+        import sys
+
+        self._next_open_at = time.monotonic() + self.RETRY_EVERY_SEC
+        idx = self.camera_index
+        # On Linux, probing a /dev/video node that is not there makes OpenCV
+        # print a warning on every retry; check first and stay quiet.
+        if isinstance(idx, int) and sys.platform.startswith("linux"):
+            if not os.path.exists(f"/dev/video{idx}"):
+                return False
+        cap = cv2.VideoCapture(idx)
+        if not cap.isOpened():
+            cap.release()
+            return False
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        self.cap, self.camera_ok, self._read_failures = cap, True, 0
+        return True
+
+    def _drop_camera(self) -> None:
+        if self.cap is not None:
+            self.cap.release()
+        self.cap, self.camera_ok = None, False
+        self._next_open_at = time.monotonic() + self.RETRY_EVERY_SEC
+
+    def _grab(self):
+        """(ok, frame), retrying a missing live camera without spinning."""
+        if self.cap is None:
+            if isinstance(self.camera_index, int) and time.monotonic() >= self._next_open_at:
+                self._open_camera()
+            if self.cap is None:
+                time.sleep(0.1)        # nothing to wait on; keep ~10 Hz, not 100% CPU
+                return False, None
+        ok, frame = self.cap.read()
+        if ok:
+            self._read_failures = 0
+            return True, frame
+        self._read_failures += 1
+        if isinstance(self.camera_index, int) and self._read_failures >= self.FAILURES_TO_LOSE:
+            self._drop_camera()
+        return False, None
+
     def read(self) -> Telemetry:
         import cv2
 
+        # `t` keeps rising for the life of the process (MediaPipe's video mode
+        # refuses a timestamp that goes back); `trip_t` restarts per driver,
+        # for the calibration windows that mean "early in this trip".
         t = time.monotonic() - self.t0
-        ok, frame = self.cap.read()
+        trip_t = t - self.trip_started
+        ok, frame = self._grab()
         if not ok:
             # A dropped frame is an absent face, never a closed eye.
-            state = self.pipeline.process(_no_face(t), t)
+            obs = _no_face(t)
         else:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             self.last_frame = frame
             obs = self.landmarker.observe(rgb, t)
             if self.eye_model is not None and obs.face_present and obs.landmarks:
                 obs.p_closed = self.eye_model.p_closed(rgb, obs.landmarks)
-            state = self.pipeline.process(obs, t)
+        self.last_obs = obs
+        state = self.pipeline.process(obs, trip_t)
 
         self.last_state = state
 
@@ -128,7 +189,7 @@ class WebcamSource(Source):
 
         self.last_road = road
         self.last_workload = workload
-        self._learn_sdlp_baseline(lane_stats.sdlp, t, state.drowsiness_level)
+        self._learn_sdlp_baseline(lane_stats.sdlp, trip_t, state.drowsiness_level)
         baseline = self.sdlp_baseline.baseline_m if self.sdlp_baseline else None
         self.last_lane_stats = lane_stats
         self.last_fused = fuse_channels(state, lane_stats, sdlp_baseline_m=baseline,
@@ -142,6 +203,22 @@ class WebcamSource(Source):
             ignition_on=self.ignition_on if ignition is None else ignition,
             fused=self.last_fused,
         )
+
+    def set_driver(self, driver_name: str, profile_dir: Optional[Path], eye_signal: Optional[str]) -> None:
+        """Start a new trip for another driver, without reopening the camera.
+
+        Saves what the outgoing driver's trip learned first. `profile_dir` None
+        means a placeholder (the setup screens) whose observations are never
+        persisted — they belong to whoever happens to be in front of the camera.
+        """
+        self.pipeline.save_profile()
+        signal = eye_signal if (eye_signal and self.eye_model is not None) else "ear"
+        self.pipeline = DriverPipeline(driver_name=driver_name, profile_dir=profile_dir,
+                                       eye_signal=signal)
+        self.sdlp_cal = SdlpCalibrator(driver_name)
+        self.sdlp_baseline, self._sdlp_offered_at = None, None
+        self.lane.reset()
+        self.trip_started = time.monotonic() - self.t0
 
     def _learn_sdlp_baseline(self, sdlp, t: float, level: int) -> None:
         if sdlp is None:
