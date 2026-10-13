@@ -216,3 +216,15 @@ def test_both_averages_so_one_failing_signal_cannot_hide_a_closure():
         s = pipe.process(FaceObservation(t=i / 30, face_present=True, ear=0.05, p_closed=0.6), i / 30)
     assert s.eye_source == "both"
     assert s.openness == pytest.approx(0.5 * (s.cnn_openness + s.ear_openness))
+
+
+def test_a_measured_signal_confidence_replaces_the_ramp():
+    # Bench drive 4: a guided EAR profile sat at the start of the passive ramp,
+    # under every confidence floor, and a 3.3 s closure raised no alarm.
+    plain = DriverPipeline(eye_signal="ear")
+    trusted = DriverPipeline(eye_signal="ear", signal_confidence=0.9)
+    a, b = None, None
+    for i in range(300):
+        o = FaceObservation(t=i / 30, face_present=True, ear=0.3)
+        a, b = plain.process(o, i / 30), trusted.process(o, i / 30)
+    assert a.confidence < 0.4 < 0.6 < b.confidence

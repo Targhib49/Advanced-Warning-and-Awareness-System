@@ -119,6 +119,9 @@ def overlay_frame(cv2, raw, state, sm, telemetry, log, fps, mirror=True, fused=N
     return frame
 
 
+# The most a guided calibration's accuracy may be trusted as. UNFITTED.
+SIGNAL_CONFIDENCE_CAP = 0.9
+
 FLOW_COMMANDS = {"new_driver", "name", "consent", "select_driver", "delete_driver",
                  "calibrate", "start", "back", "switch_driver"}
 
@@ -351,8 +354,12 @@ def main() -> None:
                 scale = None
                 if cal.get("cnn_open_p") is not None and cal.get("cnn_closed_p") is not None:
                     scale = (cal["cnn_open_p"], cal["cnn_closed_p"])
+                # Trust the chosen signal as far as it earned in calibration,
+                # capped: one minute of calibration never proves certainty.
+                score = (cal.get("scores") or {}).get(driver.eye_signal, {}).get("score")
+                trust = min(SIGNAL_CONFIDENCE_CAP, score) if score is not None else None
                 src.set_driver(driver.id, profiles_dir, driver.eye_signal,
-                               neutral_pose=neutral, cnn_scale=scale)
+                               neutral_pose=neutral, cnn_scale=scale, signal_confidence=trust)
                 sm = StateMachine(initial_state=DrivingState.MOVING)
                 trip, held, kss_given = TripTracker(), {"reason": None, "t": -1e9}, None
                 session = new_session(driver.id, driver.eye_signal if eye_model else "ear")

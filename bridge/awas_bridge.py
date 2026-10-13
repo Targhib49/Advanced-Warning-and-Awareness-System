@@ -1,8 +1,10 @@
 """AWAS simulator bridge: ETS2 telemetry and road view -> the AWAS device.
 
 Runs on the machine with Euro Truck Simulator 2. Reads the game's telemetry
-through the scs-sdk-plugin (installed by install_windows.ps1), captures the
-game window, and sends both to the Raspberry Pi over UDP. The Pi does all the
+through a telemetry plugin — scs-sdk-plugin's shared memory on Windows
+(install_windows.ps1), AWAS's own plugin over local UDP on macOS
+(mac/install_mac.sh) — captures the game window, and sends both to the
+Raspberry Pi over UDP. The Pi does all the
 sensing and deciding; this program only stands in for the truck's wiring.
 
     python awas_bridge.py                       # send to awas.local
@@ -82,6 +84,61 @@ class Ets2Telemetry:
         }
 
 
+class PluginUdpTelemetry:
+    """The game's state from mac/awas_telemetry.dylib, which sends one JSON
+    line per ~50 ms to 127.0.0.1:8098. (scs-sdk-plugin has no macOS build.)"""
+
+    PORT = 8098
+    STALE_SEC = 2.0
+
+    def __init__(self, port: int = PORT):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            self.sock.bind(("127.0.0.1", port))
+        except OSError:
+            sys.exit(f"Port {port} is in use — is another AWAS bridge already running?")
+        self.sock.setblocking(False)
+        self._last, self._at = None, 0.0
+
+    def read(self):
+        while True:
+            try:
+                data = self.sock.recv(4096)
+            except (BlockingIOError, OSError):
+                break
+            try:
+                msg = json.loads(data)
+            except ValueError:
+                continue
+            if msg.get("bye"):
+                self._last = None            # the game closed
+                continue
+            self._last, self._at = msg, time.monotonic()
+        d = self._last
+        if d is None:
+            return None
+        # A paused game may stop sending frames; its last word stands. A
+        # running one that went quiet has crashed or unloaded the plugin.
+        if time.monotonic() - self._at > self.STALE_SEC and not d.get("paused"):
+            return None
+        limit = d.get("speed_limit", 0.0) * MS_TO_KMH
+        return {
+            "source": "ets2",
+            "speed_kmh": round(abs(d.get("speed", 0.0)) * MS_TO_KMH, 2),
+            "steer": round(d.get("steer", 0.0), 4),
+            "engine_on": bool(d.get("engine", False)),
+            "paused": bool(d.get("paused", False)),
+            "speed_limit_kmh": round(limit, 1) if limit > 1 else None,
+            "gear": int(d.get("gear", 0)),
+            "blinker_left": bool(d.get("lblinker", False)),     # the stalk, as on Windows
+            "blinker_right": bool(d.get("rblinker", False)),
+        }
+
+
+def ets2_telemetry():
+    return Ets2Telemetry() if sys.platform == "win32" else PluginUdpTelemetry()
+
+
 class MockTelemetry:
     """A steady motorway drive with a little steering wander."""
 
@@ -107,7 +164,7 @@ class MockTelemetry:
 # ---------------------------------------------------------------- capture
 
 class ScreenCapture:
-    """The game window (Windows), or a whole monitor, via mss."""
+    """The game window (Windows, macOS), or a whole monitor, via mss."""
 
     def __init__(self, mode: str, title: str, monitor: int, region):
         import mss
@@ -125,6 +182,8 @@ class ScreenCapture:
         if time.monotonic() - self._found_at < 2.0 and self._rect:
             return self._rect
         self._found_at = time.monotonic()
+        if sys.platform == "darwin":
+            return self._mac_window_rect()
         try:
             import pygetwindow
             wins = [w for w in pygetwindow.getWindowsWithTitle(self.title)
@@ -145,11 +204,45 @@ class ScreenCapture:
                       "width": max(1, w.width - 16), "height": max(1, w.height - 39)}
         return self._rect
 
+    def _mac_window_rect(self):
+        # Quartz names windows by owning app; reading other apps' window
+        # titles would need the Screen Recording permission anyway.
+        try:
+            import Quartz
+            infos = Quartz.CGWindowListCopyWindowInfo(
+                Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+                Quartz.kCGNullWindowID) or []
+        except Exception:
+            infos = []
+        # Any window level: full screen, ETS2 draws at a raised level (25),
+        # windowed at the normal one (0). Its small menu-bar strips are
+        # dropped by size below.
+        wins = [w for w in infos
+                if self.title.lower() in str(w.get("kCGWindowOwnerName", "")).lower()]
+        bounds = [w["kCGWindowBounds"] for w in wins]
+        bounds = [b for b in bounds if b["Width"] > 200 and b["Height"] > 200]
+        if not bounds:
+            if not self._warned:
+                print(f"capture: no '{self.title}' window yet; capturing the monitor",
+                      file=sys.stderr)
+                self._warned = True
+            self._rect = None
+            return None
+        self._warned = False
+        b = max(bounds, key=lambda b: b["Width"] * b["Height"])
+        x, y, w, h = int(b["X"]), int(b["Y"]), int(b["Width"]), int(b["Height"])
+        # Points, as mss expects on macOS. A windowed game has a title bar; a
+        # full-screen one is exactly a monitor's size and has none.
+        full = any(m["width"] == w and m["height"] == h for m in self.mss.monitors[1:])
+        bar = 0 if full else 28
+        self._rect = {"left": x, "top": y + bar, "width": w, "height": max(1, h - bar)}
+        return self._rect
+
     def grab(self):
         import numpy as np
         if self.region:
             box = dict(zip(("left", "top", "width", "height"), self.region))
-        elif self.mode == "window" and sys.platform == "win32" and self._window_rect():
+        elif self.mode == "window" and sys.platform in ("win32", "darwin") and self._window_rect():
             box = self._rect
         else:
             box = self.mss.monitors[self.monitor]
@@ -231,7 +324,7 @@ def main() -> None:
                  f"(shown in the phone's hotspot device list).")
     dest = (pi_ip, args.port)
 
-    tel = MockTelemetry() if args.source == "mock" else Ets2Telemetry()
+    tel = MockTelemetry() if args.source == "mock" else ets2_telemetry()
     if args.capture == "mock":
         cap = MockRoad(tel if isinstance(tel, MockTelemetry) else MockTelemetry())
     elif args.capture == "none":
@@ -239,8 +332,16 @@ def main() -> None:
     else:
         region = tuple(int(v) for v in args.region.split(",")) if args.region else None
         cap = ScreenCapture(args.capture, args.window_title, args.monitor, region)
+        if sys.platform == "darwin" and not _mac_can_capture():
+            print("capture: macOS has not allowed this app to record the screen. Allow it in "
+                  "System Settings > Privacy & Security > Screen & System Audio Recording "
+                  "(for Terminal), then restart the bridge. Until then the Pi sees no road.",
+                  file=sys.stderr)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # macOS caps a datagram at the send buffer, 9 KB by default; a road frame
+    # is up to MAX_JPEG. (Windows and Linux already allow ~64 KB.)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 2 * MAX_JPEG)
     sock.setblocking(False)
 
     rec_video = rec_tel = None
@@ -308,6 +409,14 @@ def main() -> None:
         if rec_tel:
             rec_tel.close()
         print(f"\nsent {sent['telemetry']} telemetry, {sent['frames']} frames")
+
+
+def _mac_can_capture() -> bool:
+    try:
+        import Quartz
+        return bool(Quartz.CGPreflightScreenCaptureAccess())
+    except Exception:
+        return True          # cannot tell (older macOS, or no pyobjc); assume yes
 
 
 def _readout(sent, tel, ack, frame_bytes, now, source) -> None:

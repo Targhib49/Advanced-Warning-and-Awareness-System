@@ -1,6 +1,7 @@
-# AWAS simulator bridge. Installed by install_windows.ps1.
+# AWAS simulator bridge. Installed by install_windows.ps1 / mac/install_mac.sh.
 mss>=9.0
 numpy>=1.26
 opencv-python>=4.9
-truck-telemetry==0.0.3          # reads scs-sdk-plugin V.1.12.x shared memory
+truck-telemetry==0.0.3; sys_platform == "win32"   # reads scs-sdk-plugin V.1.12.x shared memory
 pygetwindow>=0.0.9; sys_platform == "win32"
+pyobjc-framework-Quartz>=10.0; sys_platform == "darwin"   # finds the game window, checks screen access

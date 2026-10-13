@@ -91,6 +91,7 @@ class DriverPipeline:
         eye_signal: str = "cnn",
         cnn_confidence: float = 0.80,
         cnn_scale: Optional[tuple] = None,
+        signal_confidence: Optional[float] = None,
         neutral_pose: Optional[tuple] = None,
         max_eye_yaw_deg: float = 25.0,
         max_eye_pitch_deg: float = 20.0,
@@ -104,6 +105,14 @@ class DriverPipeline:
         `cnn_scale` is (P(closed) open, P(closed) closed) from this driver's
         guided calibration: their personal CNN scale, exactly as EAR has one.
         Without it the raw 1 - P(closed) stands in.
+
+        `signal_confidence` is how far to trust the chosen eye signal for this
+        driver, measured: its accuracy across the four calibration situations
+        (open, closed, looking down, nodding off). When given it replaces both
+        the EAR profile's sample-count ramp and the fixed `cnn_confidence`.
+        Bench drive 4 is why: a guided EAR profile sat at the start of the
+        passive ramp (0.35, ~0.26 after the other factors), under every
+        level's confidence floor, so a 3.3 s closure produced no alarm.
 
         `cnn_confidence` replaces the EAR calibration's confidence while the
         CNN is driving. It is UNFITTED: the model scored 98.6% on unseen MRL
@@ -127,6 +136,7 @@ class DriverPipeline:
             raise ValueError(f"eye_signal must be 'cnn', 'ear' or 'both', got {eye_signal!r}")
         self.eye_signal = eye_signal
         self.cnn_scale = cnn_scale
+        self.signal_confidence = signal_confidence
         self.cnn_confidence = cnn_confidence
         self.neutral_pose = neutral_pose
         self.neutral_yaw, self.neutral_pitch = neutral_pose or (0.0, 0.0)
@@ -294,7 +304,10 @@ class DriverPipeline:
         window with too little observation in it, and a face we are only
         intermittently seeing.
         """
-        c = self.cnn_confidence if use_cnn else self.normalizer.confidence
+        if self.signal_confidence is not None:
+            c = self.signal_confidence
+        else:
+            c = self.cnn_confidence if use_cnn else self.normalizer.confidence
         if not f.usable:
             c *= 0.5
         c *= max(f.face_present_ratio, 0.25) if f.n_samples > 1 else 0.5
