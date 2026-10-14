@@ -11,21 +11,28 @@
 # adding one does not move it off the network it is on now.
 set -uo pipefail
 PI="${AWAS_PI:-awas}"
+IP="${AWAS_PI_IP:-}"          # when the .local name does not resolve (it can go
+                              # stale on the Mac after switching networks)
+pi() { ssh ${IP:+-o HostName=$IP} "$@"; }
 
 echo "AWAS: add a Wi-Fi network to the Pi"
 echo
-if ! ssh -n -o ConnectTimeout=8 -o BatchMode=yes "$PI" true 2>/dev/null; then
-    echo "Cannot reach the Pi ('$PI'). Join the same network as the Pi first, then try again."
-    read -r -p "Press Enter to close." _
-    exit 1
+if ! pi -n -o ConnectTimeout=8 -o BatchMode=yes "$PI" true 2>/dev/null; then
+    echo "Cannot reach the Pi by name. If this Mac is on the same network as the Pi,"
+    read -r -p "type the Pi's IP address (from the hotspot's device list), or Enter to stop: " IP
+    if [ -z "$IP" ] || ! pi -n -o ConnectTimeout=8 -o BatchMode=yes "$PI" true 2>/dev/null; then
+        echo "Cannot reach the Pi. Join the same network as the Pi first, then try again."
+        read -r -p "Press Enter to close." _
+        exit 1
+    fi
 fi
 
 echo "Networks the Pi can see now:"
-ssh -n "$PI" 'nmcli -t -f SSID,SIGNAL dev wifi list --rescan yes 2>/dev/null | awk -F: '\''$1 != "" && !seen[$1]++ {printf "   %-32s signal %s%%\n", $1, $2}'\'' | head -15'
+pi -n "$PI" 'nmcli -t -f SSID,SIGNAL dev wifi list --rescan yes 2>/dev/null | awk -F: '\''$1 != "" && !seen[$1]++ {printf "   %-32s signal %s%%\n", $1, $2}'\'' | head -15'
 echo "   (a phone hotspot only shows up while its hotspot screen is open)"
 echo
 echo "Saved on the Pi already:"
-ssh -n "$PI" 'nmcli -t -f NAME,TYPE con show | awk -F: '\''$2 ~ /wireless/ {sub(/^netplan-wlan0-/, "", $1); print "   " $1}'\'''
+pi -n "$PI" 'nmcli -t -f NAME,TYPE con show | awk -F: '\''$2 ~ /wireless/ {sub(/^netplan-wlan0-/, "", $1); print "   " $1}'\'''
 echo
 
 read -r -p "Network name (exactly, capitals and spaces matter): " SSID
@@ -39,7 +46,7 @@ fi
 # Name and password go in on stdin, one per line. Existing profiles are found
 # by the SSID they connect to, not by their label: the Pi's first network is
 # labelled "netplan-wlan0-<name>", and matching labels would add a duplicate.
-printf '%s\n%s\n' "$SSID" "$PSK" | ssh "$PI" '
+printf '%s\n%s\n' "$SSID" "$PSK" | pi "$PI" '
 read -r SSID; read -r PSK
 active=$(nmcli -g GENERAL.CON-UUID dev show wlan0 2>/dev/null)
 same=()
