@@ -37,6 +37,10 @@ echo
 
 read -r -p "Network name (exactly, capitals and spaces matter): " SSID
 if [ -z "$SSID" ]; then echo "No name given; nothing changed."; read -r -p "Press Enter to close." _; exit 1; fi
+# Shown back, because a first keystroke can be lost to a window taking focus
+# (one save came out as "onic" for "Bonic"), and a wrong name never connects.
+read -r -p "Save the network \"$SSID\"? [y/N] " OK
+case "$OK" in y|Y|yes|Yes) ;; *) echo "Nothing changed."; read -r -p "Press Enter to close." _; exit 1 ;; esac
 read -r -s -p "Password (hidden; leave empty for an open network): " PSK; echo
 if [ -n "$PSK" ] && [ "${#PSK}" -lt 8 ]; then
     echo "A Wi-Fi password is at least 8 characters; nothing changed."
